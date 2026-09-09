@@ -1,0 +1,1476 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SOTN Preset API",
+    "version": "1.0.0",
+    "description": "Community options, exported presets, and per-account voting for SOTNPresetGenerator. Reads are public. In AWS, writes require a Cognito access token with token_use=access, a nonempty sub, the configured client audience and issuer, and scope aws.cognito.signin.user.admin. Obtain and refresh tokens through Cognito; this API does not implement login endpoints. For cmd/local only, omit bearer authentication and send X-Dev-User; the production Lambda ignores that header. The security requirements in this document describe production. Import this file into OpenAPI-compatible integration tools. Replace the AWS server placeholder with the deployed stack's ApiUrl. The file name openai.json is intentional; its contents are a standard OpenAPI document."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8080",
+      "description": "Local development (go run ./cmd/local). Writes use X-Dev-User instead of a bearer token."
+    },
+    {
+      "url": "https://{apiId}.execute-api.{region}.amazonaws.com",
+      "description": "AWS deployment placeholder; replace with the stack ApiUrl before use.",
+      "variables": {
+        "apiId": {
+          "default": "replace-with-api-id",
+          "description": "API Gateway ID from the deployed stack."
+        },
+        "region": {
+          "default": "us-west-2",
+          "description": "Region of the deployed stack."
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Process health."
+    },
+    {
+      "name": "Options",
+      "description": "User-created randomizer options."
+    },
+    {
+      "name": "Presets",
+      "description": "Full exported randomizer presets."
+    }
+  ],
+  "security": [],
+  "paths": {
+    "/healthz": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": [
+          "Health"
+        ],
+        "summary": "Check process health",
+        "description": "Returns process health only; does not probe DynamoDB.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The process is responding.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      }
+    },
+    "/v1/options": {
+      "get": {
+        "operationId": "listOptions",
+        "tags": [
+          "Options"
+        ],
+        "summary": "List options",
+        "description": "Public, paginated catalog ordered by immutable catalog ID (not creation time or score). Follow nextCursor until absent to retrieve all items. A page may be empty while still having a cursor. Pagination is not a snapshot during concurrent submissions.",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of options.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptionPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "0123456789abcdef0123456789abcdef",
+                      "kind": "options",
+                      "createdBy": "example-cognito-subject",
+                      "createdAt": "2026-09-09T20:00:00Z",
+                      "upvotes": 0,
+                      "downvotes": 0,
+                      "score": 0,
+                      "data": {
+                        "comment": "Community gameplay tweak",
+                        "description": "Enable the library shortcut.",
+                        "category": "gameplay",
+                        "type": "string",
+                        "value": "{\"libraryShortcut\":true}",
+                        "rawJson": true,
+                        "additionalWrites": [],
+                        "address": null,
+                        "gameInit": false,
+                        "statEdit": false
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOption",
+        "tags": [
+          "Options"
+        ],
+        "summary": "Submit a community option",
+        "description": "Send the input object directly, without a data wrapper. Maximum request and normalized JSON size: 128 KiB. Each successful POST creates a separate item; do not automatically retry an uncertain POST because submissions are not deduplicated. The authenticated subject supplies createdBy.",
+        "security": [
+          {
+            "CognitoAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DevUser"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Submission JSON, at most 131072 bytes; normalized JSON has the same limit.",
+          "x-maxBytes": 131072,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptionInput"
+              },
+              "example": {
+                "comment": "Community gameplay tweak",
+                "description": "Enable the library shortcut.",
+                "category": "gameplay",
+                "type": "string",
+                "value": "{\"libraryShortcut\":true}",
+                "rawJson": true,
+                "additionalWrites": []
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created catalog item.",
+            "headers": {
+              "Location": {
+                "description": "Relative path to the created item.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "/v1/options/0123456789abcdef0123456789abcdef"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptionItem"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef",
+                  "kind": "options",
+                  "createdBy": "example-cognito-subject",
+                  "createdAt": "2026-09-09T20:00:00Z",
+                  "upvotes": 0,
+                  "downvotes": 0,
+                  "score": 0,
+                  "data": {
+                    "comment": "Community gameplay tweak",
+                    "description": "Enable the library shortcut.",
+                    "category": "gameplay",
+                    "type": "string",
+                    "value": "{\"libraryShortcut\":true}",
+                    "rawJson": true,
+                    "additionalWrites": [],
+                    "address": null,
+                    "gameInit": false,
+                    "statEdit": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/BodyTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      }
+    },
+    "/v1/options/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CatalogID"
+        }
+      ],
+      "get": {
+        "operationId": "getOption",
+        "tags": [
+          "Options"
+        ],
+        "summary": "Get a option by catalog ID",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The requested catalog item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptionItem"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef",
+                  "kind": "options",
+                  "createdBy": "example-cognito-subject",
+                  "createdAt": "2026-09-09T20:00:00Z",
+                  "upvotes": 0,
+                  "downvotes": 0,
+                  "score": 0,
+                  "data": {
+                    "comment": "Community gameplay tweak",
+                    "description": "Enable the library shortcut.",
+                    "category": "gameplay",
+                    "type": "string",
+                    "value": "{\"libraryShortcut\":true}",
+                    "rawJson": true,
+                    "additionalWrites": [],
+                    "address": null,
+                    "gameInit": false,
+                    "statEdit": false
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      }
+    },
+    "/v1/options/{id}/vote": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CatalogID"
+        }
+      ],
+      "put": {
+        "operationId": "setOptionVote",
+        "tags": [
+          "Options"
+        ],
+        "summary": "Upvote, downvote, or remove your option vote",
+        "description": "One vote per authenticated account per item. Set value to 1 for upvote, -1 for downvote, or 0 to remove. Repeating the same value does not increment totals. Vote changes and aggregate counters are updated transactionally. Missing items return 404 without creating votes. Returned totals may include concurrent votes; there is no per-user vote field in the response.",
+        "security": [
+          {
+            "CognitoAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DevUser"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteInput"
+              },
+              "examples": {
+                "upvote": {
+                  "summary": "Upvote",
+                  "value": {
+                    "value": 1
+                  }
+                },
+                "downvote": {
+                  "summary": "Downvote",
+                  "value": {
+                    "value": -1
+                  }
+                },
+                "remove": {
+                  "summary": "Remove your vote",
+                  "value": {
+                    "value": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item with current aggregate vote totals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptionItem"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef",
+                  "kind": "options",
+                  "createdBy": "example-cognito-subject",
+                  "createdAt": "2026-09-09T20:00:00Z",
+                  "upvotes": 1,
+                  "downvotes": 0,
+                  "score": 1,
+                  "data": {
+                    "comment": "Community gameplay tweak",
+                    "description": "Enable the library shortcut.",
+                    "category": "gameplay",
+                    "type": "string",
+                    "value": "{\"libraryShortcut\":true}",
+                    "rawJson": true,
+                    "additionalWrites": [],
+                    "address": null,
+                    "gameInit": false,
+                    "statEdit": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/BodyTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      }
+    },
+    "/v1/presets": {
+      "get": {
+        "operationId": "listPresets",
+        "tags": [
+          "Presets"
+        ],
+        "summary": "List presets",
+        "description": "Public, paginated catalog ordered by immutable catalog ID (not creation time or score). Follow nextCursor until absent to retrieve all items. A page may be empty while still having a cursor. Pagination is not a snapshot during concurrent submissions.",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of presets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetPage"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "0123456789abcdef0123456789abcdef",
+                      "kind": "presets",
+                      "createdBy": "example-cognito-subject",
+                      "createdAt": "2026-09-09T20:00:00Z",
+                      "upvotes": 0,
+                      "downvotes": 0,
+                      "score": 0,
+                      "data": {
+                        "metadata": {
+                          "id": "community-casual",
+                          "name": "Community Casual",
+                          "description": "A casual preset with the library shortcut enabled.",
+                          "author": [
+                            "Your Name"
+                          ]
+                        },
+                        "inherits": "casual",
+                        "libraryShortcut": true
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPreset",
+        "tags": [
+          "Presets"
+        ],
+        "summary": "Submit a community preset",
+        "description": "Send the input object directly, without a data wrapper. Maximum request and normalized JSON size: 128 KiB. Each successful POST creates a separate item; do not automatically retry an uncertain POST because submissions are not deduplicated. The authenticated subject supplies createdBy.",
+        "security": [
+          {
+            "CognitoAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DevUser"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Submission JSON, at most 131072 bytes; normalized JSON has the same limit.",
+          "x-maxBytes": 131072,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresetData"
+              },
+              "example": {
+                "metadata": {
+                  "id": "community-casual",
+                  "name": "Community Casual",
+                  "description": "A casual preset with the library shortcut enabled.",
+                  "author": [
+                    "Your Name"
+                  ]
+                },
+                "inherits": "casual",
+                "libraryShortcut": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created catalog item.",
+            "headers": {
+              "Location": {
+                "description": "Relative path to the created item.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "/v1/presets/0123456789abcdef0123456789abcdef"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetItem"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef",
+                  "kind": "presets",
+                  "createdBy": "example-cognito-subject",
+                  "createdAt": "2026-09-09T20:00:00Z",
+                  "upvotes": 0,
+                  "downvotes": 0,
+                  "score": 0,
+                  "data": {
+                    "metadata": {
+                      "id": "community-casual",
+                      "name": "Community Casual",
+                      "description": "A casual preset with the library shortcut enabled.",
+                      "author": [
+                        "Your Name"
+                      ]
+                    },
+                    "inherits": "casual",
+                    "libraryShortcut": true
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/BodyTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      }
+    },
+    "/v1/presets/{id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CatalogID"
+        }
+      ],
+      "get": {
+        "operationId": "getPreset",
+        "tags": [
+          "Presets"
+        ],
+        "summary": "Get a preset by catalog ID",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The requested catalog item.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetItem"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef",
+                  "kind": "presets",
+                  "createdBy": "example-cognito-subject",
+                  "createdAt": "2026-09-09T20:00:00Z",
+                  "upvotes": 0,
+                  "downvotes": 0,
+                  "score": 0,
+                  "data": {
+                    "metadata": {
+                      "id": "community-casual",
+                      "name": "Community Casual",
+                      "description": "A casual preset with the library shortcut enabled.",
+                      "author": [
+                        "Your Name"
+                      ]
+                    },
+                    "inherits": "casual",
+                    "libraryShortcut": true
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      }
+    },
+    "/v1/presets/{id}/vote": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/CatalogID"
+        }
+      ],
+      "put": {
+        "operationId": "setPresetVote",
+        "tags": [
+          "Presets"
+        ],
+        "summary": "Upvote, downvote, or remove your preset vote",
+        "description": "One vote per authenticated account per item. Set value to 1 for upvote, -1 for downvote, or 0 to remove. Repeating the same value does not increment totals. Vote changes and aggregate counters are updated transactionally. Missing items return 404 without creating votes. Returned totals may include concurrent votes; there is no per-user vote field in the response.",
+        "security": [
+          {
+            "CognitoAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DevUser"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoteInput"
+              },
+              "examples": {
+                "upvote": {
+                  "summary": "Upvote",
+                  "value": {
+                    "value": 1
+                  }
+                },
+                "downvote": {
+                  "summary": "Downvote",
+                  "value": {
+                    "value": -1
+                  }
+                },
+                "remove": {
+                  "summary": "Remove your vote",
+                  "value": {
+                    "value": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item with current aggregate vote totals.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetItem"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef",
+                  "kind": "presets",
+                  "createdBy": "example-cognito-subject",
+                  "createdAt": "2026-09-09T20:00:00Z",
+                  "upvotes": 1,
+                  "downvotes": 0,
+                  "score": 1,
+                  "data": {
+                    "metadata": {
+                      "id": "community-casual",
+                      "name": "Community Casual",
+                      "description": "A casual preset with the library shortcut enabled.",
+                      "author": [
+                        "Your Name"
+                      ]
+                    },
+                    "inherits": "casual",
+                    "libraryShortcut": true
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/BodyTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "CognitoAccessToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Cognito access token (not ID token). The API Gateway authorizer verifies issuer, client audience, expiry and scope aws.cognito.signin.user.admin. Use Authorization: Bearer <AccessToken>. This scheme describes AWS only; local development uses X-Dev-User."
+      }
+    },
+    "parameters": {
+      "CatalogID": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Shared catalog ID, not a generator-local numeric ID or metadata.id.",
+        "schema": {
+          "$ref": "#/components/schemas/CatalogID"
+        }
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 20
+        },
+        "description": "Maximum number of items in a page; the database size limit can yield fewer."
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Opaque nextCursor from the previous page of the same collection. Omit on the first request."
+      },
+      "DevUser": {
+        "name": "X-Dev-User",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "LOCAL DEVELOPMENT ONLY: required for writes to cmd/local when using the localhost server. Selects a test identity. Never authenticates AWS requests and is ignored by production.",
+        "example": "alice"
+      }
+    },
+    "schemas": {
+      "CatalogID": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{32}$",
+        "minLength": 32,
+        "maxLength": 32,
+        "description": "Server-generated shared catalog ID. Distinct from local numeric SQLite option IDs and preset metadata.id.",
+        "example": "0123456789abcdef0123456789abcdef"
+      },
+      "OptionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "comment",
+          "category",
+          "type",
+          "value"
+        ],
+        "properties": {
+          "comment": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S",
+            "description": "Nonblank label; the server limit is 200 UTF-8 bytes, not characters.",
+            "x-maxBytes": 200
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 10000,
+            "default": "",
+            "description": "Optional explanation; null becomes an empty string. Maximum 10000 UTF-8 bytes.",
+            "x-maxBytes": 10000
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "world",
+              "items",
+              "challenge",
+              "relics",
+              "gameplay"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "char",
+              "short",
+              "word",
+              "long",
+              "string"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S",
+            "description": "Write value encoded as a string. When rawJson is true, this string must encode a JSON object. Numeric values remain strings."
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "pattern": "\\S",
+            "default": null,
+            "description": "Optional nonblank write address. Missing or null is normalized to null."
+          },
+          "gameInit": {
+            "type": "boolean",
+            "nullable": true,
+            "default": false,
+            "description": "Use game initialization writes. Missing or null becomes false."
+          },
+          "statEdit": {
+            "type": "boolean",
+            "nullable": true,
+            "default": false,
+            "description": "Use stat-edit writes. Missing or null becomes false."
+          },
+          "rawJson": {
+            "type": "boolean",
+            "nullable": true,
+            "default": false,
+            "description": "Interpret value as a JSON object to merge into the preset. Missing or null becomes false."
+          },
+          "additionalWrites": {
+            "type": "array",
+            "nullable": true,
+            "maxItems": 256,
+            "default": [],
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "description": "Additional randomizer write objects; missing or null becomes an empty array. The randomizer validates write semantics."
+          }
+        },
+        "example": {
+          "comment": "Community gameplay tweak",
+          "description": "Enable the library shortcut.",
+          "category": "gameplay",
+          "type": "string",
+          "value": "{\"libraryShortcut\":true}",
+          "rawJson": true,
+          "additionalWrites": []
+        },
+        "description": "Submit a CreateOptionInput object directly, without a data wrapper, local ID, readOnly flag, author identity, or vote totals."
+      },
+      "OptionData": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "comment",
+          "description",
+          "category",
+          "type",
+          "value",
+          "address",
+          "gameInit",
+          "statEdit",
+          "rawJson",
+          "additionalWrites"
+        ],
+        "properties": {
+          "comment": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S",
+            "description": "Nonblank label; the server limit is 200 UTF-8 bytes, not characters.",
+            "x-maxBytes": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 10000,
+            "default": "",
+            "description": "Optional explanation; null becomes an empty string. Maximum 10000 UTF-8 bytes.",
+            "x-maxBytes": 10000
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "world",
+              "items",
+              "challenge",
+              "relics",
+              "gameplay"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "char",
+              "short",
+              "word",
+              "long",
+              "string"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S",
+            "description": "Write value encoded as a string. When rawJson is true, this string must encode a JSON object. Numeric values remain strings."
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "pattern": "\\S",
+            "default": null,
+            "description": "Optional nonblank write address. Missing or null is normalized to null."
+          },
+          "gameInit": {
+            "type": "boolean",
+            "default": false,
+            "description": "Use game initialization writes. Missing or null becomes false."
+          },
+          "statEdit": {
+            "type": "boolean",
+            "default": false,
+            "description": "Use stat-edit writes. Missing or null becomes false."
+          },
+          "rawJson": {
+            "type": "boolean",
+            "default": false,
+            "description": "Interpret value as a JSON object to merge into the preset. Missing or null becomes false."
+          },
+          "additionalWrites": {
+            "type": "array",
+            "maxItems": 256,
+            "default": [],
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "description": "Additional randomizer write objects; missing or null becomes an empty array. The randomizer validates write semantics."
+          }
+        },
+        "description": "Stored option with all optional fields normalized."
+      },
+      "PresetData": {
+        "type": "object",
+        "required": [
+          "metadata"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "metadata": {
+            "type": "object",
+            "required": [
+              "id",
+              "name"
+            ],
+            "additionalProperties": true,
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "\\S",
+                "x-maxBytes": 200,
+                "description": "Exported preset identifier; nonblank and at most 200 UTF-8 bytes. Not unique in the shared catalog."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "\\S",
+                "x-maxBytes": 200,
+                "description": "Display name; nonblank and at most 200 UTF-8 bytes."
+              }
+            },
+            "description": "Other metadata, including author, is preserved as supplied; it does not establish submitter identity."
+          }
+        },
+        "description": "Full exported randomizer preset, not an editor draft containing local optionIds. All other settings and JSON number precision are preserved. The randomizer owns validation of those settings.",
+        "example": {
+          "metadata": {
+            "id": "community-casual",
+            "name": "Community Casual",
+            "description": "A casual preset with the library shortcut enabled.",
+            "author": [
+              "Your Name"
+            ]
+          },
+          "inherits": "casual",
+          "libraryShortcut": true
+        }
+      },
+      "ItemMetadata": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "createdBy",
+          "createdAt",
+          "upvotes",
+          "downvotes",
+          "score"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/CatalogID"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "options",
+              "presets"
+            ]
+          },
+          "createdBy": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Verified Cognito subject of the submitter; never client-supplied."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "upvotes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "readOnly": true
+          },
+          "downvotes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0,
+            "readOnly": true
+          },
+          "score": {
+            "type": "integer",
+            "format": "int64",
+            "readOnly": true,
+            "description": "upvotes minus downvotes"
+          }
+        }
+      },
+      "VoteInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "integer",
+            "enum": [
+              -1,
+              0,
+              1
+            ],
+            "description": "1 = upvote, -1 = downvote, 0 = remove your vote."
+          }
+        },
+        "example": {
+          "value": 1
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "invalid_request",
+                  "unauthorized",
+                  "not_found",
+                  "method_not_allowed",
+                  "conflict",
+                  "body_too_large",
+                  "unsupported_media_type",
+                  "internal_error"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "GatewayError": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "API Gateway may reject a request before Lambda runs and return its own error body.",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "OptionItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ItemMetadata"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "options"
+                ]
+              },
+              "data": {
+                "$ref": "#/components/schemas/OptionData"
+              }
+            }
+          }
+        ]
+      },
+      "OptionPage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OptionItem"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Opaque cursor for this collection. Omitted at the end; continue even if a page has no items."
+          }
+        }
+      },
+      "PresetItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ItemMetadata"
+          },
+          {
+            "type": "object",
+            "required": [
+              "data"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "presets"
+                ]
+              },
+              "data": {
+                "$ref": "#/components/schemas/PresetData"
+              }
+            }
+          }
+        ]
+      },
+      "PresetPage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PresetItem"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Opaque cursor for this collection. Omitted at the end; continue even if a page has no items."
+          }
+        }
+      }
+    },
+    "responses": {
+      "InvalidRequest": {
+        "description": "Malformed JSON, unsupported fields, invalid option/preset/vote, invalid pagination, or normalized submission exceeding 128 KiB.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "code": "invalid_request",
+                "message": "value must be -1, 0, or 1"
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid authentication. Production writes require a Cognito access token; ID tokens are rejected. API Gateway may return a different error shape.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "API Gateway rejected authorization, such as an access token without the required scope.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Unknown catalog ID or route.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "code": "not_found",
+                "message": "item not found"
+              }
+            }
+          }
+        }
+      },
+      "MethodNotAllowed": {
+        "description": "HTTP method is not supported on this route.",
+        "headers": {
+          "Allow": {
+            "schema": {
+              "type": "string"
+            },
+            "description": "Supported methods."
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "A concurrent update could not complete after bounded internal retries. Retry the operation. POST is not deduplicated; each successful POST creates a new submission.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": {
+                "code": "conflict",
+                "message": "concurrent update; retry the request"
+              }
+            }
+          }
+        }
+      },
+      "BodyTooLarge": {
+        "description": "Request body exceeds 128 KiB. The local development server may return plain text.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          },
+          "text/plain": {
+            "schema": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UnsupportedMediaType": {
+        "description": "Writes require Content-Type: application/json; charset parameters are accepted.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Throttled": {
+        "description": "API Gateway throttled the request; retry with backoff.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Database or internal server error. Internal details are not returned.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "GatewayFailure": {
+        "description": "An infrastructure failure or other API Gateway response outside the application error contract.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            }
+          }
+        }
+      }
+    }
+  }
+}

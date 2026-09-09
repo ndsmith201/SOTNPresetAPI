@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SOTN community presets, options, and per-account voting
+
+Resources:
+  CatalogTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  Users:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      UsernameConfiguration:
+        CaseSensitive: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  DesktopClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref Users
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 40
+        ThrottlingRateLimit: 20
+      CorsConfiguration:
+        AllowOrigins: ['*']
+        AllowHeaders: [Content-Type, Authorization]
+        AllowMethods: [GET, POST, PUT, OPTIONS]
+        MaxAge: 600
+      Auth:
+        DefaultAuthorizer: Cognito
+        Authorizers:
+          Cognito:
+            IdentitySource: $request.header.Authorization
+            AuthorizationScopes: [aws.cognito.signin.user.admin]
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${Users}
+              audience: [!Ref DesktopClient]
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+    Properties:
+      CodeUri: .
+      Handler: cmd/api
+      Runtime: provided.al2023
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref CatalogTable
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+              Resource: !GetAtt CatalogTable.Arn
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /healthz
+            Method: GET
+            Auth: {Authorizer: NONE}
+        ListOptions:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/options
+            Method: GET
+            Auth: {Authorizer: NONE}
+        CreateOption:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/options
+            Method: POST
+        GetOption:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/options/{id}
+            Method: GET
+            Auth: {Authorizer: NONE}
+        VoteOption:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/options/{id}/vote
+            Method: PUT
+        ListPresets:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/presets
+            Method: GET
+            Auth: {Authorizer: NONE}
+        CreatePreset:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/presets
+            Method: POST
+        GetPreset:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/presets/{id}
+            Method: GET
+            Auth: {Authorizer: NONE}
+        VotePreset:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/presets/{id}/vote
+            Method: PUT
+
+  FunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ApiFunction}
+      RetentionInDays: 14
+
+Outputs:
+  ApiUrl:
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+  UserPoolId:
+    Value: !Ref Users
+  UserPoolClientId:
+    Value: !Ref DesktopClient
+  Region:
+    Value: !Ref AWS::Region
+  TableName:
+    Value: !Ref CatalogTable

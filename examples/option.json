@@ -1,0 +1,9 @@
+{
+  "comment": "Community gameplay tweak",
+  "description": "Enable the library shortcut.",
+  "category": "gameplay",
+  "type": "string",
+  "value": "{\"libraryShortcut\":true}",
+  "rawJson": true,
+  "additionalWrites": []
+}
