@@ -1,0 +1,8 @@
+.tools/
+.cache/
+.aws-sam/
+bin/
+.env
+*.exe
+coverage.out
+dynamodb-local-metadata.json

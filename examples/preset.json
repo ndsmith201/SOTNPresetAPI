@@ -1,0 +1,10 @@
+{
+  "metadata": {
+    "id": "community-casual",
+    "name": "Community Casual",
+    "description": "A casual preset with the library shortcut enabled.",
+    "author": ["Your Name"]
+  },
+  "inherits": "casual",
+  "libraryShortcut": true
+}
