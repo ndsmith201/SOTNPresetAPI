@@ -16,8 +16,9 @@ import (
 const MaxBodyBytes = 128 * 1024
 
 var (
-	ErrNotFound = errors.New("item not found")
-	ErrConflict = errors.New("concurrent update; retry the request")
+	ErrNotFound  = errors.New("item not found")
+	ErrConflict  = errors.New("concurrent update; retry the request")
+	ErrForbidden = errors.New("a preset with this name exists; only its listed authors can update it")
 )
 
 // Data preserves the submitted option or exported preset, including unknown
@@ -40,6 +41,7 @@ type Page struct {
 
 type Store interface {
 	Create(context.Context, Item) error
+	SavePreset(context.Context, Item, *Item) (Item, error)
 	Get(context.Context, string, string) (Item, error)
 	List(context.Context, string, int, string) (Page, error)
 	Vote(context.Context, string, string, string, int) (Item, error)
