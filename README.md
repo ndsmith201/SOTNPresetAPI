@@ -6,6 +6,8 @@ Reads are public. Submissions and votes require a Cognito **access token**. Each
 
 The integration contract is [openai.json](openai.json), a standard OpenAPI 3.0.3 document with all nine operations, request and response schemas, pagination, voting examples, and authentication requirements. Import it into Swagger UI, Postman, or an OpenAPI client generator. It includes a localhost server and an AWS placeholder; replace the latter with the deployed stack's `ApiUrl`. Production writes use bearer authentication; local writes use `X-Dev-User` instead.
 
+Ready-to-use [Bruno collections](bruno/README.md) cover every API route and Cognito login/token refresh. They include the deployed AWS environment and a local API environment, with passwords supplied through local secret variables.
+
 ## Endpoints
 
 | Method | Path | Behavior |

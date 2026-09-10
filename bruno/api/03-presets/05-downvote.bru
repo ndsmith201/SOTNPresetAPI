@@ -1,0 +1,53 @@
+meta {
+  name: Downvote preset
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{base_url}}/v1/presets/{{preset_id}}/vote
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "value": -1
+  }
+}
+
+script:pre-request {
+  const id = bru.getVar("preset_id") || bru.getEnvVar("preset_id");
+  if (!id || !/^[0-9a-f]{32}$/.test(id)) {
+    throw new Error("Run Create preset first or set preset_id to a shared catalog ID.");
+  }
+  const mode = bru.getEnvVar("auth_mode");
+  if (mode === "local") {
+    req.setHeader("X-Dev-User", bru.getEnvVar("dev_user") || "alice");
+  } else if (mode === "aws") {
+    const token = bru.getVar("access_token") || bru.getEnvVar("access_token");
+    if (!token) throw new Error("Run Authentication / Get token first, or set the access_token secret.");
+    req.setHeader("Authorization", "Bearer " + token);
+  } else {
+    throw new Error("Select the AWS or Local environment.");
+  }
+}
+
+tests {
+  test("HTTP 200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Vote totals are consistent", function () {
+    const item = res.getBody();
+    expect(item.score).to.equal(item.upvotes - item.downvotes);
+  });
+}
+
+docs {
+  Sets your vote to -1. Repeating the same value does not increment totals.
+  Uses the preset_id captured by Create preset, or an ID entered in the selected environment. Authentication is applied by the pre-request script.
+}
