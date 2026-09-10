@@ -522,8 +522,8 @@
         "tags": [
           "Presets"
         ],
-        "summary": "Submit a community preset",
-        "description": "Send the input object directly, without a data wrapper. Maximum request and normalized JSON size: 128 KiB. Each successful POST creates a separate item; do not automatically retry an uncertain POST because submissions are not deduplicated. The authenticated subject supplies createdBy.",
+        "summary": "Create or update a community preset",
+        "description": "Send exported JSON directly, without a data wrapper; maximum 128 KiB. A new name creates an item (201). A matching name updates the existing JSON (200) only when the verified access-token username appears in its stored metadata.author array. Names and usernames ignore case and surrounding spaces. The submitted author list cannot authorize its own update. Updates preserve the catalog ID, creation metadata, and votes. Unauthorized collisions return 403, even if another preset with that name lists the caller as an author; ambiguous matches or concurrent changes return 409. Do not automatically retry uncertain submissions.",
         "security": [
           {
             "CognitoAccessToken": []
@@ -559,6 +559,25 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Updated preset with its existing identity and votes.",
+            "headers": {
+              "Location": {
+                "description": "Relative path to the created item.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "/v1/presets/0123456789abcdef0123456789abcdef"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetItem"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Created catalog item.",
             "headers": {
@@ -1104,7 +1123,7 @@
                 "description": "Display name; nonblank and at most 200 UTF-8 bytes."
               }
             },
-            "description": "Other metadata, including author, is preserved as supplied; it does not establish submitter identity."
+            "description": "Metadata is preserved as supplied. For same-name updates, the verified username must match the existing stored author array; incoming authors do not grant update permission."
           }
         },
         "description": "Full exported randomizer preset, not an editor draft containing local optionIds. All other settings and JSON number precision are preserved. The randomizer owns validation of those settings.",
@@ -1217,7 +1236,8 @@
                   "conflict",
                   "body_too_large",
                   "unsupported_media_type",
-                  "internal_error"
+                  "internal_error",
+                  "forbidden"
                 ]
               },
               "message": {
@@ -1357,7 +1377,7 @@
         }
       },
       "Forbidden": {
-        "description": "API Gateway rejected authorization, such as an access token without the required scope.",
+        "description": "Authorization was rejected by API Gateway, or a same-name preset does not list the verified username in its stored author array.",
         "content": {
           "application/json": {
             "schema": {

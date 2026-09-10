@@ -54,7 +54,7 @@ func main() {
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
-			res := api.Handle(ctx, catalog.Request{Method: r.Method, Path: r.URL.Path, ContentType: r.Header.Get("Content-Type"), Subject: r.Header.Get("X-Dev-User"), Query: query, Body: body})
+			res := api.Handle(ctx, catalog.Request{Method: r.Method, Path: r.URL.Path, ContentType: r.Header.Get("Content-Type"), Subject: r.Header.Get("X-Dev-User"), Username: r.Header.Get("X-Dev-User"), Query: query, Body: body})
 			for k, v := range res.Headers {
 				w.Header().Set(k, v)
 			}

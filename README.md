@@ -18,7 +18,7 @@ Ready-to-use [Bruno collections](bruno/README.md) cover every API route and Cogn
 | GET | `/v1/options/{id}` | Get one option |
 | PUT | `/v1/options/{id}/vote` | Set or remove your vote |
 | GET | `/v1/presets` | List presets |
-| POST | `/v1/presets` | Submit an exported preset |
+| POST | `/v1/presets` | Create a preset or update a same-name preset as a listed author |
 | GET | `/v1/presets/{id}` | Get one preset |
 | PUT | `/v1/presets/{id}/vote` | Set or remove your vote |
 
@@ -52,7 +52,7 @@ List endpoints accept `limit` (1–50, default 20) and an opaque `cursor`. Respo
 }
 ```
 
-Create and get endpoints return a single item in this format. Creation returns `201` and a `Location` header. Submit the option or preset directly as the request body, without a `data` wrapper. Each POST creates a separate submission; POST retries are not deduplicated.
+Create and get endpoints return a single item in this format. Creation returns `201` and a `Location` header; updating a preset returns `200` with the existing item and location. Submit the option or preset directly as the request body, without a `data` wrapper. Option POSTs create separate submissions. Do not automatically retry uncertain POSTs; refresh the catalog first.
 
 ### Options
 
@@ -64,7 +64,11 @@ Server IDs, authorship, and vote totals cannot be supplied by clients. Unknown o
 
 ### Presets and generator integration
 
-Submit the generator's **exported preset JSON**, with nonblank `metadata.id` and `metadata.name`. Custom randomizer settings, explicit `false` values, and JSON number precision are preserved. `metadata.author` is display metadata; the authenticated submitter is recorded independently as `createdBy`. See [examples/preset.json](examples/preset.json).
+Submit the generator's **exported preset JSON**, with nonblank `metadata.id` and `metadata.name`. Custom randomizer settings, explicit `false` values, and JSON number precision are preserved. The authenticated subject is recorded independently as `createdBy`. See [examples/preset.json](examples/preset.json).
+
+Sharing a name already in the catalog updates that preset when the caller's verified access-token `username` matches a string in the **stored** `metadata.author` array. Names and author usernames match without case or surrounding spaces. The new payload cannot grant itself update permission. Updates replace only `data`, preserving the catalog ID, creator, creation time, and all votes. A collision without a matching author returns `403`, even if another preset with that name lists the caller as an author; more than one matching preset listing that author returns `409` rather than choosing arbitrarily. Missing or malformed stored author arrays do not authorize an update.
+
+Existing rows work without migration: sharing searches all preset pages, including empty pages with cursors. A separate `preset-name` partition reserves each normalized name transactionally with its write, preventing concurrent submissions from creating duplicate rows. Updates compare the previously authorized JSON before replacing it, so an intervening author change returns `409`. Concurrent votes remain intact. These reservation rows are excluded from public catalog lists. Deploy the updated Lambda before relying on this behavior in the generator; the POST route and table schema are unchanged.
 
 The API assigns a catalog ID independently of `metadata.id`. Multiple submissions may share a preset metadata ID. A generator editor draft containing local `optionIds` is not an exported preset; export it before sharing.
 
@@ -94,7 +98,7 @@ Send `PUT /v1/{options|presets}/{id}/vote` with:
 
 Use `1` to upvote, `-1` to downvote, or `0` to remove the vote. The response contains the item and current aggregate totals. The voter is always the verified Cognito subject, never a body or header user ID. Votes on nonexistent items return `404` without creating an orphan vote. Transaction conflicts retry internally; a remaining conflict returns `409`, which the client can retry. Totals may include other votes committed before the response was read.
 
-The application returns errors as `{"error":{"code":"invalid_request","message":"..."}}`, with statuses `400`, `401`, `404`, `405`, `409`, `413`, `415`, or `500`. API Gateway can reject authentication or throttled requests before Lambda runs, using its own response format.
+The application returns errors as `{"error":{"code":"invalid_request","message":"..."}}`, with statuses `400`, `401`, `403`, `404`, `405`, `409`, `413`, `415`, or `500`. API Gateway can reject authentication or throttled requests before Lambda runs, using its own response format.
 
 ## Local development
 

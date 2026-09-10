@@ -13,9 +13,9 @@ import (
 )
 
 type Request struct {
-	Method, Path, ContentType, Subject string
-	Query                              map[string]string
-	Body                               []byte
+	Method, Path, ContentType, Subject, Username string
+	Query                                        map[string]string
+	Body                                         []byte
 }
 
 type Response struct {
@@ -83,6 +83,9 @@ func (a API) Handle(ctx context.Context, r Request) Response {
 		if err != nil {
 			return failure(400, "invalid_request", err.Error())
 		}
+		if kind == "presets" {
+			return a.sharePreset(ctx, item, r.Username)
+		}
 		if err := a.Store.Create(ctx, item); err != nil {
 			return storeError(err)
 		}
@@ -146,6 +149,8 @@ func storeError(err error) Response {
 		return failure(404, "not_found", err.Error())
 	case errors.Is(err, ErrConflict):
 		return failure(409, "conflict", err.Error())
+	case errors.Is(err, ErrForbidden):
+		return failure(403, "forbidden", err.Error())
 	default:
 		slog.Error("database operation failed", "error", err)
 		return failure(500, "internal_error", "internal server error")

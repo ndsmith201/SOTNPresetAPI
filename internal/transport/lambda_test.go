@@ -12,7 +12,24 @@ import (
 
 type captureStore struct {
 	catalog.Store
-	item catalog.Item
+	item     catalog.Item
+	existing *catalog.Item
+}
+
+func (s *captureStore) List(context.Context, string, int, string) (catalog.Page, error) {
+	if s.existing != nil {
+		return catalog.Page{Items: []catalog.Item{*s.existing}}, nil
+	}
+	return catalog.Page{}, nil
+}
+func (s *captureStore) SavePreset(_ context.Context, item catalog.Item, previous *catalog.Item) (catalog.Item, error) {
+	if previous != nil {
+		data := item.Data
+		item = *previous
+		item.Data = data
+	}
+	s.item = item
+	return item, nil
 }
 
 func (s *captureStore) Create(_ context.Context, item catalog.Item) error {
@@ -68,5 +85,24 @@ func TestLambdaRejectsSpoofedIdentity(t *testing.T) {
 	res, _ = handler(context.Background(), event)
 	if res.StatusCode != 400 {
 		t.Fatal(res)
+	}
+}
+
+func TestPresetUpdateUsesVerifiedUsername(t *testing.T) {
+	for _, username := range []string{"alice", "mallory", ""} {
+		store := &captureStore{existing: &catalog.Item{ID: "0123456789abcdef0123456789abcdef", Kind: "presets", Data: json.RawMessage(`{"metadata":{"name":"Sample","author":["alice"]}}`)}}
+		event := events.APIGatewayV2HTTPRequest{RawPath: "/v1/presets",
+			Headers: map[string]string{"content-type": "application/json", "X-Dev-User": "alice", "username": "alice"},
+			Body:    `{"metadata":{"id":"sample","name":"Sample","author":["alice","mallory"]}}`}
+		event.RequestContext.HTTP.Method = "POST"
+		event.RequestContext.Authorizer = &events.APIGatewayV2HTTPRequestContextAuthorizerDescription{JWT: &events.APIGatewayV2HTTPRequestContextAuthorizerJWTDescription{Claims: map[string]string{"sub": "verified-sub", "token_use": "access", "username": username}}}
+		res, err := LambdaHandler(catalog.API{Store: store})(context.Background(), event)
+		want := 403
+		if username == "alice" {
+			want = 200
+		}
+		if err != nil || res.StatusCode != want {
+			t.Fatalf("username %q: %+v %v", username, res, err)
+		}
 	}
 }

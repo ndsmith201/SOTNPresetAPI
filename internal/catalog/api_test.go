@@ -22,14 +22,27 @@ type stubStore struct {
 }
 
 func (s *stubStore) Create(_ context.Context, i Item) error { s.calls++; s.item = i; return s.err }
+func (s *stubStore) SavePreset(_ context.Context, item Item, previous *Item) (Item, error) {
+	s.calls++
+	if previous != nil {
+		data := item.Data
+		item = *previous
+		item.Data = data
+	}
+	s.item = item
+	return item, s.err
+}
 func (s *stubStore) Get(context.Context, string, string) (Item, error) {
 	s.calls++
 	return s.item, s.err
 }
-func (s *stubStore) List(_ context.Context, _ string, n int, after string) (Page, error) {
+func (s *stubStore) List(_ context.Context, kind string, n int, after string) (Page, error) {
 	s.calls++
 	s.limit = n
 	s.after = after
+	if kind == "presets" {
+		return Page{}, s.err
+	}
 	return Page{NextCursor: testID}, s.err
 }
 func (s *stubStore) Vote(_ context.Context, _, _, _ string, v int) (Item, error) {
