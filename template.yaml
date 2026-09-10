@@ -24,7 +24,8 @@ Resources:
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
 
-  Users:
+  # A new logical ID creates a pool instead of updating immutable sign-in attributes.
+  UsernameUsers:
     Type: AWS::Cognito::UserPool
     DependsOn: AllowCognitoToInvokeAutoConfirm
     DeletionPolicy: Retain
@@ -84,7 +85,7 @@ Resources:
   DesktopClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      UserPoolId: !Ref Users
+      UserPoolId: !Ref UsernameUsers
       GenerateSecret: false
       PreventUserExistenceErrors: ENABLED
       EnableTokenRevocation: true
@@ -119,7 +120,7 @@ Resources:
             IdentitySource: $request.header.Authorization
             AuthorizationScopes: [aws.cognito.signin.user.admin]
             JwtConfiguration:
-              issuer: !Sub https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${Users}
+              issuer: !Sub https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${UsernameUsers}
               audience: [!Ref DesktopClient]
 
   ApiFunction:
@@ -217,7 +218,7 @@ Outputs:
   ApiUrl:
     Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
   UserPoolId:
-    Value: !Ref Users
+    Value: !Ref UsernameUsers
   UserPoolClientId:
     Value: !Ref DesktopClient
   Region:
