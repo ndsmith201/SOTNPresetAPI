@@ -26,11 +26,10 @@ Resources:
 
   Users:
     Type: AWS::Cognito::UserPool
+    DependsOn: AllowCognitoToInvokeAutoConfirm
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
     Properties:
-      UsernameAttributes: [email]
-      AutoVerifiedAttributes: [email]
       UsernameConfiguration:
         CaseSensitive: false
       Policies:
@@ -42,8 +41,45 @@ Resources:
           RequireSymbols: true
       AccountRecoverySetting:
         RecoveryMechanisms:
-          - Name: verified_email
+          - Name: admin_only
             Priority: 1
+      LambdaConfig:
+        PreSignUp: !GetAtt AutoConfirmSignUp.Arn
+
+  AutoConfirmSignUpRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  AutoConfirmSignUp:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Confirm username-only Cognito sign-ups without email or SMS
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt AutoConfirmSignUpRole.Arn
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+            event.response.autoConfirmUser = true;
+            return event;
+          };
+
+  AllowCognitoToInvokeAutoConfirm:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref AutoConfirmSignUp
+      Principal: cognito-idp.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
 
   DesktopClient:
     Type: AWS::Cognito::UserPoolClient
@@ -58,7 +94,7 @@ Resources:
         - ALLOW_REFRESH_TOKEN_AUTH
       AccessTokenValidity: 1
       IdTokenValidity: 1
-      RefreshTokenValidity: 30
+      RefreshTokenValidity: 3650
       TokenValidityUnits:
         AccessToken: hours
         IdToken: hours

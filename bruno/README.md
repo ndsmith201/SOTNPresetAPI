@@ -10,16 +10,16 @@ Use **Open Collection** in Bruno and select one of these directories:
 ## AWS setup
 
 1. Open `api` and select the **AWS** environment.
-2. Open the environment editor and enter the test account password in the **password** secret variable. The username is already `test@example.com`; change it to use another confirmed account.
+2. Open the environment editor and enter the test account password in the **password** secret variable. The username is already `test-user`; change it to use another account.
 3. Send **Authentication → Get token**. It stores `access_token` and `refresh_token` as runtime variables for this collection.
 4. Send API requests. Submissions and votes automatically attach the access token. Public GET requests need no token.
-5. Use **Authentication → Refresh token** when the access token expires. Sign in again if the refresh token expires or is revoked.
+5. Use **Authentication → Refresh token** when the one-hour access token expires. The deployed app client gives refresh tokens Cognito's maximum 3,650-day lifetime; sign in again if the refresh token expires or is revoked.
 
 The environment points to the `sotn-api` deployment in `us-east-1`. For another deployment, update `base_url`, `cognito_url`, and `cognito_client_id` using the stack outputs. No AWS access keys or client secret are required.
 
 Alternatively, copy `.env.example` to `.env` inside the collection directory and set `SOTN_TEST_PASSWORD` there. `.env` is ignored by Git. The environment's password secret takes precedence. Password values and issued tokens are not included in the committed collection files; scripts retain tokens only in runtime variables. Request/response views still contain credentials and tokens, so exclude those values from shared exports and reports.
 
-The standalone `auth` collection uses the same setup and login flow. Runtime variables are scoped to their collection. To use its token in `api`, copy `AuthenticationResult.AccessToken` from the response into the API environment's `access_token` secret, or run the API collection's own Get token request. Use the **access token**, not the ID token. These requests expect a confirmed account that can sign in directly; they do not implement MFA or password-change challenges.
+The standalone `auth` collection uses the same setup and login flow. Runtime variables are scoped to their collection. To use its token in `api`, copy `AuthenticationResult.AccessToken` from the response into the API environment's `access_token` secret, or run the API collection's own Get token request. Use the **access token**, not the ID token. These requests expect an account that can sign in directly; username-only self-sign-ups are confirmed automatically. They do not implement MFA or password-change challenges.
 
 ## Using the API requests
 
