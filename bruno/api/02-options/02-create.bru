@@ -1,0 +1,56 @@
+meta {
+  name: Create option
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/v1/options
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "comment": "Bruno library shortcut",
+    "description": "Example community option submitted from Bruno.",
+    "category": "gameplay",
+    "type": "string",
+    "value": "{\"libraryShortcut\":true}",
+    "rawJson": true,
+    "additionalWrites": []
+  }
+}
+
+script:pre-request {
+  const mode = bru.getEnvVar("auth_mode");
+  if (mode === "local") {
+    req.setHeader("X-Dev-User", bru.getEnvVar("dev_user") || "alice");
+  } else if (mode === "aws") {
+    const token = bru.getVar("access_token") || bru.getEnvVar("access_token");
+    if (!token) throw new Error("Run Authentication / Get token first, or set the access_token secret.");
+    req.setHeader("Authorization", "Bearer " + token);
+  } else {
+    throw new Error("Select the AWS or Local environment.");
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 201) bru.setVar("option_id", res.getBody().id);
+}
+
+tests {
+  test("HTTP 201", function () {
+    expect(res.getStatus()).to.equal(201);
+  });
+}
+
+docs {
+  Creates a real option in the selected environment. Each successful POST creates a new submission, including repeated sends.
+  The new shared ID is saved as option_id for the Get and Vote requests. Edit the example body before sharing your own content.
+  Authentication headers are added by the pre-request script: Bearer access token on AWS, X-Dev-User on Local.
+}

@@ -1,0 +1,32 @@
+meta {
+  name: List options
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/v1/options?limit={{limit}}
+  body: none
+  auth: none
+}
+
+params:query {
+  limit: {{limit}}
+  ~cursor: {{options_cursor}}
+}
+
+script:post-response {
+  if (res.getStatus() === 200) bru.setVar("options_cursor", res.getBody().nextCursor || "");
+}
+
+tests {
+  test("HTTP 200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+}
+
+docs {
+  Public list, one page at a time. The next cursor is saved as options_cursor.
+  To request another page, enable the cursor parameter in Params and resend. Stop when nextCursor is absent; an empty page alone does not mean completion.
+  Items are ordered by shared catalog ID, not score or date.
+}

@@ -1,0 +1,72 @@
+meta {
+  name: Get token
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{cognito_url}}
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/x-amz-json-1.1
+  X-Amz-Target: AWSCognitoIdentityProviderService.InitiateAuth
+}
+
+body:json {
+  {
+    "AuthFlow": "USER_PASSWORD_AUTH",
+    "ClientId": "{{cognito_client_id}}",
+    "AuthParameters": {
+      "USERNAME": "{{username}}",
+      "PASSWORD": "{{password}}"
+    }
+  }
+}
+
+script:pre-request {
+  if (bru.getEnvVar("auth_mode") === "local") {
+    bru.runner.skipRequest();
+  } else {
+    bru.setVar("access_token", "");
+    bru.setVar("refresh_token", "");
+    const password = bru.getEnvVar("password") || bru.getProcessEnv("SOTN_TEST_PASSWORD");
+    if (!password) throw new Error("Set the password secret in the AWS environment, or SOTN_TEST_PASSWORD in a local .env file.");
+    req.setBody({
+      AuthFlow: "USER_PASSWORD_AUTH",
+      ClientId: bru.getEnvVar("cognito_client_id"),
+      AuthParameters: { USERNAME: bru.getEnvVar("username"), PASSWORD: password }
+    });
+  }
+}
+
+script:post-response {
+  const body = res.getBody();
+  const result = body && body.AuthenticationResult;
+  if (res.getStatus() !== 200 || !result || !result.AccessToken) {
+    bru.setVar("access_token", "");
+    throw new Error("Cognito did not issue an access token. Check the response for a sign-in error or authentication challenge.");
+  }
+  // Runtime variables are shared by requests in this collection, but never saved to Git.
+  bru.setVar("access_token", result.AccessToken);
+  if (result.RefreshToken) bru.setVar("refresh_token", result.RefreshToken);
+  bru.setVar("token_expires_at", new Date(Date.now() + result.ExpiresIn * 1000).toISOString());
+}
+
+tests {
+  test("HTTP 200", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("Cognito returned an access token", function () {
+    expect(res.getBody().AuthenticationResult.AccessToken).to.be.a("string").and.not.empty;
+  });
+}
+
+docs {
+  Select AWS and set the password secret to your test account password. No AWS access keys or signing are needed.
+  The pre-request script safely JSON-encodes the password. On success, access_token and refresh_token are stored as collection runtime variables.
+  Use AuthenticationResult.AccessToken, not IdToken, for API requests. No tokens are printed or written to environment files.
+  In the Local environment this request is skipped.
+}
