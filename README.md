@@ -39,13 +39,11 @@ List endpoints accept `limit` (1–50, default 20) and an opaque `cursor`. Respo
         "comment": "Library shortcut",
         "description": "Enable the library shortcut.",
         "category": "gameplay",
-        "type": "string",
         "value": "{\"libraryShortcut\":true}",
-        "address": null,
         "gameInit": false,
         "statEdit": false,
         "rawJson": true,
-        "additionalWrites": []
+        "writes": []
       }
     }
   ]
@@ -56,11 +54,13 @@ Create and get endpoints return a single item in this format. Creation returns `
 
 ### Options
 
-The input matches the generator's `CreateOptionInput`: `comment`, `category`, `type`, and `value` are required. Supported categories are `world`, `items`, `challenge`, `relics`, and `gameplay`; types are `char`, `short`, `word`, `long`, and `string`. `value` is a string, including for numeric write values.
+The input uses `comment`, `category`, and a single ordered `writes` array. Each memory write contains its own `type`, string or numeric `value`, optional `address`, and optional `comment`; extra properties are preserved, including on the first write. Supported categories are `world`, `items`, `challenge`, `relics`, and `gameplay`; types are `char`, `short`, `word`, `long`, and `string`. Memory options require 1–257 writes.
 
-Optional fields are `description`, `address`, `gameInit`, `statEdit`, `rawJson`, and `additionalWrites`. A raw JSON option's `value` must encode an object. Each additional write must be an object. The API validates the submission structure; the randomizer remains responsible for game addresses, write semantics, and preset validity. Requests and normalized JSON are limited to 128 KiB.
+Optional fields are `description`, `gameInit`, `statEdit`, and `rawJson`. JSON settings use `rawJson: true`, an empty `writes` array, and a top-level `value` string encoding a JSON object. Memory options have no top-level `type`, `value`, or `address`.
 
-Server IDs, authorship, and vote totals cannot be supplied by clients. Unknown option fields are rejected. See [examples/option.json](examples/option.json).
+Legacy submissions with top-level write fields, `primaryWrite`, and `additionalWrites` are normalized into `writes`. Do not mix the two formats. Existing catalog items are normalized on read without changing their IDs, votes, or stored records. Release this API change before the desktop version that submits `writes`; older desktop versions must be updated to consume canonical memory-option responses. No database migration is needed for API records.
+
+The randomizer remains responsible for game addresses, write semantics, and preset validity. Requests and normalized JSON are limited to 128 KiB. Clients must send the option directly, without a local ID, `readOnly`, or a `data` wrapper. See [examples/option.json](examples/option.json).
 
 An option's name is its `comment`, matched without case or surrounding spaces across all categories. A same-name submission updates the stored option only when the authenticated Cognito subject exactly matches its `createdBy`; usernames do not grant permission. A different author or missing stored author returns `403`. Multiple same-name entries owned by the caller return `409` rather than choosing arbitrarily. Updates replace only `data`, preserving the ID, creator, creation time, and votes.
 

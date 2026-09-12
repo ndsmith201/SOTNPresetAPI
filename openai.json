@@ -120,13 +120,11 @@
                         "comment": "Community gameplay tweak",
                         "description": "Enable the library shortcut.",
                         "category": "gameplay",
-                        "type": "string",
                         "value": "{\"libraryShortcut\":true}",
                         "rawJson": true,
-                        "additionalWrites": [],
-                        "address": null,
                         "gameInit": false,
-                        "statEdit": false
+                        "statEdit": false,
+                        "writes": []
                       }
                     }
                   ]
@@ -181,10 +179,9 @@
                 "comment": "Community gameplay tweak",
                 "description": "Enable the library shortcut.",
                 "category": "gameplay",
-                "type": "string",
                 "value": "{\"libraryShortcut\":true}",
                 "rawJson": true,
-                "additionalWrites": []
+                "writes": []
               }
             }
           }
@@ -237,13 +234,11 @@
                     "comment": "Community gameplay tweak",
                     "description": "Enable the library shortcut.",
                     "category": "gameplay",
-                    "type": "string",
                     "value": "{\"libraryShortcut\":true}",
                     "rawJson": true,
-                    "additionalWrites": [],
-                    "address": null,
                     "gameInit": false,
-                    "statEdit": false
+                    "statEdit": false,
+                    "writes": []
                   }
                 }
               }
@@ -315,13 +310,11 @@
                     "comment": "Community gameplay tweak",
                     "description": "Enable the library shortcut.",
                     "category": "gameplay",
-                    "type": "string",
                     "value": "{\"libraryShortcut\":true}",
                     "rawJson": true,
-                    "additionalWrites": [],
-                    "address": null,
                     "gameInit": false,
-                    "statEdit": false
+                    "statEdit": false,
+                    "writes": []
                   }
                 }
               }
@@ -418,13 +411,11 @@
                     "comment": "Community gameplay tweak",
                     "description": "Enable the library shortcut.",
                     "category": "gameplay",
-                    "type": "string",
                     "value": "{\"libraryShortcut\":true}",
                     "rawJson": true,
-                    "additionalWrites": [],
-                    "address": null,
                     "gameInit": false,
-                    "statEdit": false
+                    "statEdit": false,
+                    "writes": []
                   }
                 }
               }
@@ -922,8 +913,7 @@
         "required": [
           "comment",
           "category",
-          "type",
-          "value"
+          "writes"
         ],
         "properties": {
           "comment": {
@@ -952,29 +942,11 @@
               "gameplay"
             ]
           },
-          "type": {
-            "type": "string",
-            "enum": [
-              "char",
-              "short",
-              "word",
-              "long",
-              "string"
-            ]
-          },
           "value": {
             "type": "string",
             "minLength": 1,
             "pattern": "\\S",
-            "description": "Write value encoded as a string. When rawJson is true, this string must encode a JSON object. Numeric values remain strings."
-          },
-          "address": {
-            "type": "string",
-            "nullable": true,
-            "minLength": 1,
-            "pattern": "\\S",
-            "default": null,
-            "description": "Optional nonblank write address. Missing or null is normalized to null."
+            "description": "JSON settings encoded as an object string. Present only when rawJson is true; memory write values belong inside writes."
           },
           "gameInit": {
             "type": "boolean",
@@ -994,28 +966,66 @@
             "default": false,
             "description": "Interpret value as a JSON object to merge into the preset. Missing or null becomes false."
           },
-          "additionalWrites": {
+          "writes": {
             "type": "array",
-            "nullable": true,
-            "maxItems": 256,
-            "default": [],
+            "maxItems": 257,
             "items": {
               "type": "object",
-              "additionalProperties": true
+              "additionalProperties": true,
+              "required": [
+                "type",
+                "value"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "char",
+                    "short",
+                    "word",
+                    "long",
+                    "string"
+                  ]
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "address": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "comment": {
+                  "type": "string"
+                }
+              }
             },
-            "description": "Additional randomizer write objects; missing or null becomes an empty array. The randomizer validates write semantics."
+            "description": "Complete ordered memory write sequence, including the first write. Notes and extra properties are preserved. Empty for rawJson settings; otherwise at least one write is required."
           }
         },
         "example": {
           "comment": "Community gameplay tweak",
           "description": "Enable the library shortcut.",
           "category": "gameplay",
-          "type": "string",
           "value": "{\"libraryShortcut\":true}",
           "rawJson": true,
-          "additionalWrites": []
+          "writes": []
         },
-        "description": "Submit a CreateOptionInput object directly, without a data wrapper, local ID, readOnly flag, author identity, or vote totals."
+        "description": "Submit a CreateOptionInput object directly, without a data wrapper, local ID, readOnly flag, author identity, or vote totals. All writes use the single writes array. Older type/value/address, primaryWrite, and additionalWrites inputs are accepted separately for migration and normalized; do not mix them with writes."
       },
       "OptionData": {
         "type": "object",
@@ -1024,13 +1034,10 @@
           "comment",
           "description",
           "category",
-          "type",
-          "value",
-          "address",
           "gameInit",
           "statEdit",
           "rawJson",
-          "additionalWrites"
+          "writes"
         ],
         "properties": {
           "comment": {
@@ -1058,29 +1065,11 @@
               "gameplay"
             ]
           },
-          "type": {
-            "type": "string",
-            "enum": [
-              "char",
-              "short",
-              "word",
-              "long",
-              "string"
-            ]
-          },
           "value": {
             "type": "string",
             "minLength": 1,
             "pattern": "\\S",
-            "description": "Write value encoded as a string. When rawJson is true, this string must encode a JSON object. Numeric values remain strings."
-          },
-          "address": {
-            "type": "string",
-            "nullable": true,
-            "minLength": 1,
-            "pattern": "\\S",
-            "default": null,
-            "description": "Optional nonblank write address. Missing or null is normalized to null."
+            "description": "JSON settings encoded as an object string. Present only when rawJson is true; memory write values belong inside writes."
           },
           "gameInit": {
             "type": "boolean",
@@ -1097,18 +1086,58 @@
             "default": false,
             "description": "Interpret value as a JSON object to merge into the preset. Missing or null becomes false."
           },
-          "additionalWrites": {
+          "writes": {
             "type": "array",
-            "maxItems": 256,
-            "default": [],
+            "maxItems": 257,
             "items": {
               "type": "object",
-              "additionalProperties": true
+              "additionalProperties": true,
+              "required": [
+                "type",
+                "value"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "char",
+                    "short",
+                    "word",
+                    "long",
+                    "string"
+                  ]
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "address": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "comment": {
+                  "type": "string"
+                }
+              }
             },
-            "description": "Additional randomizer write objects; missing or null becomes an empty array. The randomizer validates write semantics."
+            "description": "Complete ordered memory write sequence, including the first write. Notes and extra properties are preserved. Empty for rawJson settings; otherwise at least one write is required."
           }
         },
-        "description": "Stored option with all optional fields normalized."
+        "description": "Stored option with all optional fields normalized. All writes use the single writes array. Older type/value/address, primaryWrite, and additionalWrites inputs are accepted separately for migration and normalized; do not mix them with writes."
       },
       "PresetData": {
         "type": "object",

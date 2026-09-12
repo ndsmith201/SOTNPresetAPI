@@ -49,16 +49,23 @@ type Store interface {
 }
 
 type Option struct {
-	Comment          string            `json:"comment"`
-	Description      string            `json:"description"`
-	Category         string            `json:"category"`
+	Comment     string            `json:"comment"`
+	Description string            `json:"description"`
+	Category    string            `json:"category"`
+	Value       string            `json:"value,omitempty"`
+	GameInit    bool              `json:"gameInit"`
+	StatEdit    bool              `json:"statEdit"`
+	RawJSON     bool              `json:"rawJson"`
+	Writes      []json.RawMessage `json:"writes"`
+}
+
+// Accept earlier clients while storing and returning the canonical writes array.
+type optionInput struct {
+	Option
 	Type             string            `json:"type"`
-	Value            string            `json:"value"`
 	Address          *string           `json:"address"`
-	GameInit         bool              `json:"gameInit"`
-	StatEdit         bool              `json:"statEdit"`
-	RawJSON          bool              `json:"rawJson"`
 	AdditionalWrites []json.RawMessage `json:"additionalWrites"`
+	PrimaryWrite     json.RawMessage   `json:"primaryWrite"`
 }
 
 func DecodeStrict(data []byte, target any) error {
@@ -115,13 +122,15 @@ func object(data []byte) (map[string]json.RawMessage, error) {
 }
 
 func validateOption(data []byte) ([]byte, error) {
-	if _, err := object(data); err != nil {
+	fields, err := object(data)
+	if err != nil {
 		return nil, err
 	}
-	var o Option
-	if err := DecodeStrict(data, &o); err != nil {
+	var input optionInput
+	if err := DecodeStrict(data, &input); err != nil {
 		return nil, fmt.Errorf("invalid option: %w", err)
 	}
+	o := input.Option
 	if strings.TrimSpace(o.Comment) == "" || len(o.Comment) > 200 {
 		return nil, errors.New("comment must contain 1–200 bytes")
 	}
@@ -133,34 +142,85 @@ func validateOption(data []byte) ([]byte, error) {
 	default:
 		return nil, errors.New("invalid option category")
 	}
-	switch o.Type {
-	case "char", "short", "word", "long", "string":
-	default:
-		return nil, errors.New("invalid write type")
-	}
-	if strings.TrimSpace(o.Value) == "" {
-		return nil, errors.New("value is required")
-	}
-	if o.Address != nil && strings.TrimSpace(*o.Address) == "" {
-		return nil, errors.New("address must be nonblank or null")
+	_, current := fields["writes"]
+	if current {
+		for _, name := range []string{"type", "address", "primaryWrite", "additionalWrites"} {
+			if _, exists := fields[name]; exists {
+				return nil, errors.New("use writes without legacy write fields")
+			}
+		}
+		if !o.RawJSON {
+			if _, exists := fields["value"]; exists {
+				return nil, errors.New("memory write values belong in writes")
+			}
+		}
+	} else if !o.RawJSON {
+		if !validWriteType(input.Type) {
+			return nil, errors.New("invalid write type")
+		}
+		if strings.TrimSpace(o.Value) == "" {
+			return nil, errors.New("value is required")
+		}
+		if input.Address != nil && strings.TrimSpace(*input.Address) == "" {
+			return nil, errors.New("address must be nonblank or null")
+		}
+		first := input.PrimaryWrite
+		if first == nil {
+			write := map[string]any{"comment": o.Comment, "type": input.Type, "value": o.Value}
+			if input.Address != nil {
+				write["address"] = *input.Address
+			}
+			first, _ = json.Marshal(write)
+		}
+		o.Writes = append([]json.RawMessage{first}, input.AdditionalWrites...)
 	}
 	if o.RawJSON {
 		if _, err := object([]byte(o.Value)); err != nil {
 			return nil, errors.New("rawJson value must encode a JSON object")
 		}
-	}
-	if len(o.AdditionalWrites) > 256 {
-		return nil, errors.New("at most 256 additionalWrites are allowed")
-	}
-	for _, w := range o.AdditionalWrites {
-		if _, err := object(w); err != nil {
-			return nil, errors.New("each additionalWrites entry must be an object")
+		if len(o.Writes) > 0 || len(input.AdditionalWrites) > 0 || input.PrimaryWrite != nil {
+			return nil, errors.New("JSON settings cannot contain memory writes")
+		}
+		o.Writes = []json.RawMessage{}
+	} else {
+		o.Value = ""
+		if len(o.Writes) < 1 || len(o.Writes) > 257 {
+			return nil, errors.New("use between 1 and 257 writes")
+		}
+		for _, w := range o.Writes {
+			write, err := object(w)
+			if err != nil {
+				return nil, errors.New("each write must be an object")
+			}
+			var kind string
+			if json.Unmarshal(write["type"], &kind) != nil || !validWriteType(kind) {
+				return nil, errors.New("each write needs a valid type")
+			}
+			value := bytes.TrimSpace(write["value"])
+			var text string
+			if len(value) == 0 || (value[0] == '"' && (json.Unmarshal(value, &text) != nil || strings.TrimSpace(text) == "")) || (value[0] != '"' && value[0] != '-' && (value[0] < '0' || value[0] > '9')) {
+				return nil, errors.New("each write needs a string or numeric value")
+			}
 		}
 	}
-	if o.AdditionalWrites == nil {
-		o.AdditionalWrites = []json.RawMessage{}
-	}
 	return json.Marshal(o)
+}
+
+func validWriteType(value string) bool {
+	switch value {
+	case "char", "short", "word", "long", "string":
+		return true
+	}
+	return false
+}
+
+func canonicalOptionItem(item Item) Item {
+	if item.Kind == "options" && len(item.Data) > 0 {
+		if data, err := validateOption(item.Data); err == nil {
+			item.Data = data
+		}
+	}
+	return item
 }
 
 func validatePreset(data []byte) ([]byte, error) {

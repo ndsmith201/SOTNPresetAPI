@@ -27,6 +27,18 @@ type Response struct {
 type API struct{ Store Store }
 
 func reply(status int, value any) Response {
+	switch item := value.(type) {
+	case Item:
+		value = canonicalOptionItem(item)
+	case Page:
+		items := make([]Item, len(item.Items))
+		for i, entry := range item.Items {
+			items[i] = canonicalOptionItem(entry)
+		}
+		item.Items = items
+		value = item
+	}
+
 	b, err := json.Marshal(value)
 	if err != nil {
 		status = 500
