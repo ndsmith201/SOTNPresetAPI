@@ -154,7 +154,7 @@ func TestOptionValidationAndPresetPreservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(item.Data), `"additionalWrites":[]`) || !strings.Contains(string(item.Data), `"address":null`) {
+	if !strings.Contains(string(item.Data), `"writes":[{"comment":"Test","type":"word","value":"0x01"}]`) || strings.Contains(string(item.Data), `"additionalWrites"`) {
 		t.Fatal(string(item.Data))
 	}
 	preset := `{"metadata":{"id":"x","name":"X"},"futureSetting":9007199254740993,"stats":false}`
