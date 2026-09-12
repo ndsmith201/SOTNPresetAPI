@@ -14,7 +14,7 @@ Ready-to-use [Bruno collections](bruno/README.md) cover every API route and Cogn
 | --- | --- | --- |
 | GET | `/healthz` | Process health; does not probe the database |
 | GET | `/v1/options` | List options |
-| POST | `/v1/options` | Submit an option |
+| POST | `/v1/options` | Create an option or update a same-name option as its author |
 | GET | `/v1/options/{id}` | Get one option |
 | PUT | `/v1/options/{id}/vote` | Set or remove your vote |
 | GET | `/v1/presets` | List presets |
@@ -52,7 +52,7 @@ List endpoints accept `limit` (1–50, default 20) and an opaque `cursor`. Respo
 }
 ```
 
-Create and get endpoints return a single item in this format. Creation returns `201` and a `Location` header; updating a preset returns `200` with the existing item and location. Submit the option or preset directly as the request body, without a `data` wrapper. Option POSTs create separate submissions. Do not automatically retry uncertain POSTs; refresh the catalog first.
+Create and get endpoints return a single item in this format. Creation returns `201` and a `Location` header; updating an option or preset returns `200` with the updated item and existing location. Submit the option or preset directly as the request body, without a `data` wrapper. Do not automatically retry uncertain POSTs; refresh the catalog first.
 
 ### Options
 
@@ -61,6 +61,10 @@ The input matches the generator's `CreateOptionInput`: `comment`, `category`, `t
 Optional fields are `description`, `address`, `gameInit`, `statEdit`, `rawJson`, and `additionalWrites`. A raw JSON option's `value` must encode an object. Each additional write must be an object. The API validates the submission structure; the randomizer remains responsible for game addresses, write semantics, and preset validity. Requests and normalized JSON are limited to 128 KiB.
 
 Server IDs, authorship, and vote totals cannot be supplied by clients. Unknown option fields are rejected. See [examples/option.json](examples/option.json).
+
+An option's name is its `comment`, matched without case or surrounding spaces across all categories. A same-name submission updates the stored option only when the authenticated Cognito subject exactly matches its `createdBy`; usernames do not grant permission. A different author or missing stored author returns `403`. Multiple same-name entries owned by the caller return `409` rather than choosing arbitrarily. Updates replace only `data`, preserving the ID, creator, creation time, and votes.
+
+Sharing searches all option pages, including legacy rows and empty pages with cursors. An `option-name` reservation is written transactionally with the item to prevent concurrent duplicate creations. Updates compare the previously read JSON and stored author; concurrent changes return `409`, while concurrent votes are preserved. Name reservations are excluded from catalog lists and are separate from preset names. No table migration is required; deploy the updated Lambda to enable this behavior.
 
 ### Presets and generator integration
 

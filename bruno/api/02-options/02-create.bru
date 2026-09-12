@@ -40,17 +40,17 @@ script:pre-request {
 }
 
 script:post-response {
-  if (res.getStatus() === 201) bru.setVar("option_id", res.getBody().id);
+  if ([200, 201].includes(res.getStatus())) bru.setVar("option_id", res.getBody().id);
 }
 
 tests {
-  test("HTTP 201", function () {
-    expect(res.getStatus()).to.equal(201);
+  test("HTTP 200 or 201", function () {
+    expect(res.getStatus()).to.be.oneOf([200, 201]);
   });
 }
 
 docs {
-  Creates a real option in the selected environment. Each successful POST creates a new submission, including repeated sends.
-  The new shared ID is saved as option_id for the Get and Vote requests. Edit the example body before sharing your own content.
+  Creates an option (201), or updates a matching comment/name owned by the authenticated user (200). Names ignore case and surrounding spaces. Another author's name returns 403; ambiguous or concurrent changes return 409.
+  The shared ID is saved as option_id for the Get and Vote requests. Updates preserve the existing ID and votes. Edit the example body before sharing your own content.
   Authentication headers are added by the pre-request script: Bearer access token on AWS, X-Dev-User on Local.
 }

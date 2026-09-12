@@ -86,12 +86,7 @@ func (a API) Handle(ctx context.Context, r Request) Response {
 		if kind == "presets" {
 			return a.sharePreset(ctx, item, r.Username)
 		}
-		if err := a.Store.Create(ctx, item); err != nil {
-			return storeError(err)
-		}
-		res := reply(201, item)
-		res.Headers["Location"] = "/v1/" + kind + "/" + item.ID
-		return res
+		return a.shareOption(ctx, item)
 	}
 	if r.Method == "PUT" {
 		var body struct {
