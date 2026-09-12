@@ -19,9 +19,13 @@ type stubStore struct {
 	limit int
 	calls int
 	vote  int
+	page  Page
 }
 
 func (s *stubStore) Create(_ context.Context, i Item) error { s.calls++; s.item = i; return s.err }
+func (s *stubStore) SaveOption(ctx context.Context, item Item, previous *Item) (Item, error) {
+	return s.SavePreset(ctx, item, previous)
+}
 func (s *stubStore) SavePreset(_ context.Context, item Item, previous *Item) (Item, error) {
 	s.calls++
 	if previous != nil {
@@ -40,10 +44,7 @@ func (s *stubStore) List(_ context.Context, kind string, n int, after string) (P
 	s.calls++
 	s.limit = n
 	s.after = after
-	if kind == "presets" {
-		return Page{}, s.err
-	}
-	return Page{NextCursor: testID}, s.err
+	return s.page, s.err
 }
 func (s *stubStore) Vote(_ context.Context, _, _, _ string, v int) (Item, error) {
 	s.calls++
@@ -107,7 +108,7 @@ func TestAPIBoundaries(t *testing.T) {
 
 func TestPagination(t *testing.T) {
 	cursor := base64.RawURLEncoding.EncodeToString([]byte("options:" + testID))
-	s := &stubStore{}
+	s := &stubStore{page: Page{NextCursor: testID}}
 	res := (API{s}).Handle(context.Background(), Request{Method: "GET", Path: "/v1/options", Query: map[string]string{"limit": "5", "cursor": cursor}})
 	if res.Status != 200 || s.after != testID || s.limit != 5 {
 		t.Fatalf("unexpected pagination: %+v %+v", s, res)

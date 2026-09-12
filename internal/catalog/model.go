@@ -42,6 +42,7 @@ type Page struct {
 type Store interface {
 	Create(context.Context, Item) error
 	SavePreset(context.Context, Item, *Item) (Item, error)
+	SaveOption(context.Context, Item, *Item) (Item, error)
 	Get(context.Context, string, string) (Item, error)
 	List(context.Context, string, int, string) (Page, error)
 	Vote(context.Context, string, string, string, int) (Item, error)

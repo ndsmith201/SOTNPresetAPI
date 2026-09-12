@@ -156,8 +156,8 @@
         "tags": [
           "Options"
         ],
-        "summary": "Submit a community option",
-        "description": "Send the input object directly, without a data wrapper. Maximum request and normalized JSON size: 128 KiB. Each successful POST creates a separate item; do not automatically retry an uncertain POST because submissions are not deduplicated. The authenticated subject supplies createdBy.",
+        "summary": "Create or update a community option",
+        "description": "Send the input object directly, without a data wrapper. Maximum request and normalized JSON size: 128 KiB. A new comment/name creates an item (201). A matching name updates the existing JSON (200) only when the authenticated Cognito subject exactly matches its stored createdBy. Names ignore case and surrounding spaces across all categories. Usernames and submitted fields cannot grant update permission. Updates preserve the catalog ID, creation metadata, and votes. Unauthorized collisions return 403; ambiguous matches or concurrent changes return 409. Do not automatically retry uncertain submissions; refresh the catalog first.",
         "security": [
           {
             "CognitoAccessToken": []
@@ -190,6 +190,25 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Updated the existing option owned by the authenticated subject; identity and votes are preserved.",
+            "headers": {
+              "Location": {
+                "description": "Relative path to the existing item.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "/v1/options/0123456789abcdef0123456789abcdef"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OptionItem"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Created catalog item.",
             "headers": {
@@ -1377,7 +1396,7 @@
         }
       },
       "Forbidden": {
-        "description": "Authorization was rejected by API Gateway, or a same-name preset does not list the verified username in its stored author array.",
+        "description": "Authorization was rejected by API Gateway, a same-name option belongs to a different authenticated subject, or a same-name preset does not list the verified username in its stored author array.",
         "content": {
           "application/json": {
             "schema": {
@@ -1421,7 +1440,7 @@
         }
       },
       "Conflict": {
-        "description": "A concurrent update could not complete after bounded internal retries. Retry the operation. POST is not deduplicated; each successful POST creates a new submission.",
+        "description": "A concurrent write conflicted, or multiple existing items have the submitted name. Vote conflicts may be retried. For submissions, refresh the catalog before retrying; ambiguous existing names require a unique name.",
         "content": {
           "application/json": {
             "schema": {
