@@ -1,0 +1,12 @@
+{
+  "comment": "Item initialization example",
+  "description": "Example no-op placed in the item-initialization block.",
+  "category": "items",
+  "gameInit": false,
+  "itemInit": true,
+  "statEdit": false,
+  "rawJson": false,
+  "writes": [
+    { "type": "word", "value": "0x00000000" }
+  ]
+}
