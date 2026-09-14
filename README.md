@@ -41,6 +41,7 @@ List endpoints accept `limit` (1–50, default 20) and an opaque `cursor`. Respo
         "category": "gameplay",
         "value": "{\"libraryShortcut\":true}",
         "gameInit": false,
+        "itemInit": false,
         "statEdit": false,
         "rawJson": true,
         "writes": []
@@ -56,7 +57,7 @@ Create and get endpoints return a single item in this format. Creation returns `
 
 The input uses `comment`, `category`, and a single ordered `writes` array. Each memory write contains its own `type`, string or numeric `value`, optional `address`, and optional `comment`; extra properties are preserved, including on the first write. Supported categories are `world`, `items`, `challenge`, `relics`, and `gameplay`; types are `char`, `short`, `word`, `long`, and `string`. Memory options require 1–257 writes.
 
-Optional fields are `description`, `gameInit`, `statEdit`, and `rawJson`. JSON settings use `rawJson: true`, an empty `writes` array, and a top-level `value` string encoding a JSON object. Memory options have no top-level `type`, `value`, or `address`.
+Optional fields are `description`, `gameInit`, `itemInit`, `statEdit`, and `rawJson`. Set `itemInit: true` for writes placed in the generator's item-initialization block. It is preserved on publication, updates, and public reads; missing or null becomes `false`, including for legacy options. No database migration is required. See [examples/item-init-option.json](examples/item-init-option.json). JSON settings use `rawJson: true`, an empty `writes` array, and a top-level `value` string encoding a JSON object. Memory options have no top-level `type`, `value`, or `address`.
 
 Legacy submissions with top-level write fields, `primaryWrite`, and `additionalWrites` are normalized into `writes`. Do not mix the two formats. Existing catalog items are normalized on read without changing their IDs, votes, or stored records. Release this API change before the desktop version that submits `writes`; older desktop versions must be updated to consume canonical memory-option responses. No database migration is needed for API records.
 
