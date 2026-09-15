@@ -16,22 +16,24 @@ import (
 const MaxBodyBytes = 128 * 1024
 
 var (
-	ErrNotFound  = errors.New("item not found")
-	ErrConflict  = errors.New("concurrent update; retry the request")
-	ErrForbidden = errors.New("a preset with this name exists; only its listed authors can update it")
+	ErrNotFound          = errors.New("item not found")
+	ErrConflict          = errors.New("concurrent update; retry the request")
+	ErrForbidden         = errors.New("a preset with this name exists; only its listed authors can update it")
+	ErrAuthorUnavailable = errors.New("unable to resolve the option author's username; try sharing again later")
 )
 
 // Data preserves the submitted option or exported preset, including unknown
 // preset settings and numeric precision. IDs belong to this shared catalog.
 type Item struct {
-	ID        string          `json:"id" dynamodbav:"sk"`
-	Kind      string          `json:"kind" dynamodbav:"pk"`
-	CreatedBy string          `json:"createdBy" dynamodbav:"createdBy"`
-	CreatedAt string          `json:"createdAt" dynamodbav:"createdAt"`
-	Upvotes   int64           `json:"upvotes" dynamodbav:"upvotes"`
-	Downvotes int64           `json:"downvotes" dynamodbav:"downvotes"`
-	Score     int64           `json:"score" dynamodbav:"score"`
-	Data      json.RawMessage `json:"data" dynamodbav:"-"`
+	ID                string          `json:"id" dynamodbav:"sk"`
+	Kind              string          `json:"kind" dynamodbav:"pk"`
+	CreatedBy         string          `json:"createdBy" dynamodbav:"createdBy"`
+	CreatedByUsername string          `json:"createdByUsername,omitempty" dynamodbav:"createdByUsername,omitempty"`
+	CreatedAt         string          `json:"createdAt" dynamodbav:"createdAt"`
+	Upvotes           int64           `json:"upvotes" dynamodbav:"upvotes"`
+	Downvotes         int64           `json:"downvotes" dynamodbav:"downvotes"`
+	Score             int64           `json:"score" dynamodbav:"score"`
+	Data              json.RawMessage `json:"data" dynamodbav:"-"`
 }
 
 type Page struct {

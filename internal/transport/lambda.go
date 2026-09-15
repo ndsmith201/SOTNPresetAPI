@@ -9,7 +9,11 @@ import (
 	"sotnpresetapi/internal/catalog"
 )
 
-func LambdaHandler(api catalog.API) func(context.Context, events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+func LambdaHandler(api catalog.API, resolvers ...catalog.UsernameResolver) func(context.Context, events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	var resolver catalog.UsernameResolver
+	if len(resolvers) > 0 {
+		resolver = resolvers[0]
+	}
 	return func(ctx context.Context, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 		subject := ""
 		username := ""
@@ -33,7 +37,7 @@ func LambdaHandler(api catalog.API) func(context.Context, events.APIGatewayV2HTT
 				contentType = v
 			}
 		}
-		result := api.Handle(ctx, catalog.Request{Method: event.RequestContext.HTTP.Method, Path: event.RawPath, ContentType: contentType, Subject: subject, Username: username, Query: event.QueryStringParameters, Body: body})
+		result := api.HandleWithAuthors(ctx, catalog.Request{Method: event.RequestContext.HTTP.Method, Path: event.RawPath, ContentType: contentType, Subject: subject, Username: username, Query: event.QueryStringParameters, Body: body}, resolver)
 		return events.APIGatewayV2HTTPResponse{StatusCode: result.Status, Headers: result.Headers, Body: result.Body}, nil
 	}
 }

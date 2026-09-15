@@ -137,6 +137,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref CatalogTable
+          USER_POOL_ID: !Ref UsernameUsers
       Policies:
         - Statement:
             - Effect: Allow
@@ -147,6 +148,9 @@ Resources:
                 - dynamodb:UpdateItem
                 - dynamodb:DeleteItem
               Resource: !GetAtt CatalogTable.Arn
+            - Effect: Allow
+              Action: cognito-idp:ListUsers
+              Resource: !GetAtt UsernameUsers.Arn
       Events:
         Health:
           Type: HttpApi
