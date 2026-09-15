@@ -273,6 +273,16 @@
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
+          "503": {
+            "description": "author_unavailable: the creator username could not be resolved from Cognito. No new option was saved. Retry after the account service recovers.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/GatewayFailure"
           }
@@ -1230,6 +1240,11 @@
             "type": "string",
             "readOnly": true,
             "description": "Verified Cognito subject of the submitter; never client-supplied."
+          },
+          "createdByUsername": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Creator username resolved server-side from Cognito. Options persist it at creation and return it from storage; legacy options may omit it until backfilled. Presets resolve it at response time. Display only, never an ownership identity."
           },
           "createdAt": {
             "type": "string",

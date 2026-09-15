@@ -158,6 +158,8 @@ func storeError(err error) Response {
 		return failure(409, "conflict", err.Error())
 	case errors.Is(err, ErrForbidden):
 		return failure(403, "forbidden", err.Error())
+	case errors.Is(err, ErrAuthorUnavailable):
+		return failure(503, "author_unavailable", err.Error())
 	default:
 		slog.Error("database operation failed", "error", err)
 		return failure(500, "internal_error", "internal server error")

@@ -8,6 +8,22 @@ The integration contract is [openai.json](openai.json), a standard OpenAPI 3.0.3
 
 Ready-to-use [Bruno collections](bruno/README.md) cover every API route and Cognito login/token refresh. They include the deployed AWS environment and a local API environment, with passwords supplied through local secret variables.
 
+Catalog responses include an optional `createdByUsername`; the original `createdBy` remains the ownership identity. New options resolve their creator's Cognito username before insertion and store it on the option row. Option lists, detail reads, votes, and same-name updates reuse that saved value without querying Cognito. If the initial lookup fails or finds no username, creation returns `503 author_unavailable` before saving. Existing options without a username need the backfill below. Local mode continues using `X-Dev-User` as the displayable creator.
+
+Preset responses still resolve names at read time with a 15-minute in-memory cache (one minute for missing users), at most four concurrent calls, and a three-second response budget. Lambda queries `ListUsers` by exact `sub`, requesting only that attribute alongside the username. Deploy the updated SAM template to supply `USER_POOL_ID` and pool-scoped `cognito-idp:ListUsers` permission.
+
+## Backfill existing option authors
+
+Requires Go and AWS credentials with `dynamodb:Query`, `cognito-idp:ListUsers`, and, for writes, `dynamodb:UpdateItem` on the target table/pool. Use the stack's `TableName` and `UserPoolId` outputs. Preview first:
+
+```powershell
+./scripts/backfill-option-authors.ps1 -TableName 'YOUR_TABLE' -UserPoolId 'YOUR_POOL' -Region us-east-1
+```
+
+Add `-Apply` to write missing usernames. Use `-Profile` for a named AWS profile. The equivalent cross-platform command is `go run ./cmd/backfill-option-authors -table YOUR_TABLE -user-pool YOUR_POOL -region us-east-1`, with `-apply` to write.
+
+The script queries only the options partition, follows every page, and looks up each distinct missing author once per run. It updates only `createdByUsername`, leaving ownership, payloads, votes, and creation dates intact. Conditional writes skip deleted rows, changed owners, and names filled concurrently. Already populated names are left alone; rerunning is safe. Missing/deleted Cognito accounts remain unresolved and appear in the summary. Lookup or database errors return a nonzero exit code; rerun after fixing the reported issue. Deploy the API change before applying the backfill so newly created options also receive stored names.
+
 ## Endpoints
 
 | Method | Path | Behavior |
