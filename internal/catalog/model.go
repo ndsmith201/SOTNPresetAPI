@@ -65,6 +65,7 @@ type Option struct {
 	Value       string            `json:"value,omitempty"`
 	GameInit    bool              `json:"gameInit"`
 	ItemInit    bool              `json:"itemInit"`
+	MainBlock   bool              `json:"mainBlock"`
 	StatEdit    bool              `json:"statEdit"`
 	RawJSON     bool              `json:"rawJson"`
 	Writes      []json.RawMessage `json:"writes"`

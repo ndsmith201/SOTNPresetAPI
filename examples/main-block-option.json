@@ -1,0 +1,18 @@
+{
+  "comment": "Main block patch example",
+  "description": "Write after the return jump and its nop.",
+  "category": "gameplay",
+  "gameInit": false,
+  "itemInit": false,
+  "mainBlock": true,
+  "statEdit": false,
+  "rawJson": false,
+  "writes": [
+    {
+      "type": "word",
+      "address": "0x1000",
+      "value": "0x12345678",
+      "comment": "Example memory patch"
+    }
+  ]
+}

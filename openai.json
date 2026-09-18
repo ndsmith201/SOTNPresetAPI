@@ -125,7 +125,8 @@
                         "gameInit": false,
                         "statEdit": false,
                         "writes": [],
-                        "itemInit": false
+                        "itemInit": false,
+                        "mainBlock": false
                       }
                     }
                   ]
@@ -240,7 +241,8 @@
                     "gameInit": false,
                     "statEdit": false,
                     "writes": [],
-                    "itemInit": false
+                    "itemInit": false,
+                    "mainBlock": false
                   }
                 }
               }
@@ -327,7 +329,8 @@
                     "gameInit": false,
                     "statEdit": false,
                     "writes": [],
-                    "itemInit": false
+                    "itemInit": false,
+                    "mainBlock": false
                   }
                 }
               }
@@ -429,7 +432,8 @@
                     "gameInit": false,
                     "statEdit": false,
                     "writes": [],
-                    "itemInit": false
+                    "itemInit": false,
+                    "mainBlock": false
                   }
                 }
               }
@@ -974,6 +978,12 @@
             "default": false,
             "description": "Place writes in the item-initialization block. Missing or null becomes false."
           },
+          "mainBlock": {
+            "type": "boolean",
+            "nullable": true,
+            "default": false,
+            "description": "Place writes immediately after the Return from injected code jump (0x0803924f) and its nop. Missing or null becomes false."
+          },
           "statEdit": {
             "type": "boolean",
             "nullable": true,
@@ -1056,6 +1066,7 @@
           "category",
           "gameInit",
           "itemInit",
+          "mainBlock",
           "statEdit",
           "rawJson",
           "writes"
@@ -1101,6 +1112,11 @@
             "type": "boolean",
             "default": false,
             "description": "Place writes in the item-initialization block. Missing or null becomes false."
+          },
+          "mainBlock": {
+            "type": "boolean",
+            "default": false,
+            "description": "Place writes immediately after the Return from injected code jump (0x0803924f) and its nop. Missing or null becomes false."
           },
           "statEdit": {
             "type": "boolean",
