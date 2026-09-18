@@ -43,9 +43,9 @@ func main() {
 	api := catalog.API{Store: storage.Dynamo{Client: client, Table: table}}
 	server := &http.Server{Addr: "127.0.0.1:8080", ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, catalog.MaxBodyBytes))
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, catalog.MaxPresetBodyBytes))
 			if err != nil {
-				http.Error(w, "body exceeds 128 KiB", 413)
+				http.Error(w, "body exceeds 256 KiB", 413)
 				return
 			}
 			query := map[string]string{}

@@ -551,7 +551,7 @@
           "Presets"
         ],
         "summary": "Create or update a community preset",
-        "description": "Send exported JSON directly, without a data wrapper; maximum 128 KiB. A new name creates an item (201). A matching name updates the existing JSON (200) only when the verified access-token username appears in its stored metadata.author array. Names and usernames ignore case and surrounding spaces. The submitted author list cannot authorize its own update. Updates preserve the catalog ID, creation metadata, and votes. Unauthorized collisions return 403, even if another preset with that name lists the caller as an author; ambiguous matches or concurrent changes return 409. Do not automatically retry uncertain submissions.",
+        "description": "Send exported JSON directly, without a data wrapper; maximum request and normalized JSON size: 256 KiB. A new name creates an item (201). A matching name updates the existing JSON (200) only when the verified access-token username appears in its stored metadata.author array. Names and usernames ignore case and surrounding spaces. The submitted author list cannot authorize its own update. Updates preserve the catalog ID, creation metadata, and votes. Unauthorized collisions return 403, even if another preset with that name lists the caller as an author; ambiguous matches or concurrent changes return 409. Do not automatically retry uncertain submissions.",
         "security": [
           {
             "CognitoAccessToken": []
@@ -1439,7 +1439,7 @@
     },
     "responses": {
       "InvalidRequest": {
-        "description": "Malformed JSON, unsupported fields, invalid option/preset/vote, invalid pagination, or normalized submission exceeding 128 KiB.",
+        "description": "Malformed JSON, unsupported fields, invalid option/preset/vote, invalid pagination, or normalized submission exceeding 256 KiB for presets or 128 KiB for options.",
         "content": {
           "application/json": {
             "schema": {
@@ -1532,7 +1532,7 @@
         }
       },
       "BodyTooLarge": {
-        "description": "Request body exceeds 128 KiB. The local development server may return plain text.",
+        "description": "Request body exceeds 256 KiB for presets or 128 KiB for options. The local development server may return plain text.",
         "content": {
           "application/json": {
             "schema": {

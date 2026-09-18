@@ -106,6 +106,40 @@ func TestAPIBoundaries(t *testing.T) {
 	}
 }
 
+func TestPresetSizeLimit(t *testing.T) {
+	const prefix = `{"metadata":{"id":"test","name":"Test"},"settings":"`
+	const suffix = `"}`
+	for _, tt := range []struct {
+		name   string
+		body   string
+		status int
+	}{
+		{"at limit", prefix + strings.Repeat("x", 256*1024-len(prefix)-len(suffix)) + suffix, 201},
+		{"over request limit", prefix + strings.Repeat("x", 256*1024+1-len(prefix)-len(suffix)) + suffix, 413},
+		{"over normalized limit", prefix + strings.Repeat("<", 45000) + suffix, 400},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &stubStore{}
+			res := (API{Store: s}).Handle(context.Background(), Request{
+				Method: "POST", Path: "/v1/presets", Body: []byte(tt.body), Subject: "alice", ContentType: "application/json",
+			})
+			if res.Status != tt.status {
+				t.Fatalf("status %d, want %d: %s", res.Status, tt.status, res.Body)
+			}
+			if tt.status >= 400 {
+				if s.calls != 0 {
+					t.Fatal("oversized preset reached database")
+				}
+				if !strings.Contains(res.Body, "256 KiB") {
+					t.Fatalf("incorrect size limit in error: %s", res.Body)
+				}
+			} else if len(s.item.Data) != 256*1024 {
+				t.Fatalf("stored %d bytes, want 256 KiB", len(s.item.Data))
+			}
+		})
+	}
+}
+
 func TestPagination(t *testing.T) {
 	cursor := base64.RawURLEncoding.EncodeToString([]byte("options:" + testID))
 	s := &stubStore{page: Page{NextCursor: testID}}

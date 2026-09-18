@@ -14,6 +14,14 @@ import (
 )
 
 const MaxBodyBytes = 128 * 1024
+const MaxPresetBodyBytes = 256 * 1024
+
+func bodyLimit(kind string) int {
+	if kind == "presets" {
+		return MaxPresetBodyBytes
+	}
+	return MaxBodyBytes
+}
 
 var (
 	ErrNotFound          = errors.New("item not found")
@@ -106,8 +114,8 @@ func NewItem(kind, user string, data []byte) (Item, error) {
 	if err != nil {
 		return Item{}, err
 	}
-	if len(normalized) > MaxBodyBytes {
-		return Item{}, errors.New("normalized JSON exceeds 128 KiB")
+	if limit := bodyLimit(kind); len(normalized) > limit {
+		return Item{}, fmt.Errorf("normalized JSON exceeds %d KiB", limit/1024)
 	}
 	id := make([]byte, 16)
 	if _, err := rand.Read(id); err != nil {
