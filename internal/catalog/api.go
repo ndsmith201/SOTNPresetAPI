@@ -82,8 +82,8 @@ func (a API) Handle(ctx context.Context, r Request) Response {
 		if r.Subject == "" {
 			return failure(401, "unauthorized", "authentication required")
 		}
-		if len(r.Body) > MaxBodyBytes {
-			return failure(413, "body_too_large", "body exceeds 128 KiB")
+		if limit := bodyLimit(kind); len(r.Body) > limit {
+			return failure(413, "body_too_large", "body exceeds "+strconv.Itoa(limit/1024)+" KiB")
 		}
 		media, _, err := mime.ParseMediaType(r.ContentType)
 		if err != nil || media != "application/json" {

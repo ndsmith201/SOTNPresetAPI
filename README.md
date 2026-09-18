@@ -77,7 +77,7 @@ Optional fields are `description`, `gameInit`, `itemInit`, `statEdit`, and `rawJ
 
 Legacy submissions with top-level write fields, `primaryWrite`, and `additionalWrites` are normalized into `writes`. Do not mix the two formats. Existing catalog items are normalized on read without changing their IDs, votes, or stored records. Release this API change before the desktop version that submits `writes`; older desktop versions must be updated to consume canonical memory-option responses. No database migration is needed for API records.
 
-The randomizer remains responsible for game addresses, write semantics, and preset validity. Requests and normalized JSON are limited to 128 KiB. Clients must send the option directly, without a local ID, `readOnly`, or a `data` wrapper. See [examples/option.json](examples/option.json).
+The randomizer remains responsible for game addresses, write semantics, and preset validity. Requests and normalized JSON are limited to 256 KiB for presets and 128 KiB for options. Clients must send the option directly, without a local ID, `readOnly`, or a `data` wrapper. See [examples/option.json](examples/option.json).
 
 An option's name is its `comment`, matched without case or surrounding spaces across all categories. A same-name submission updates the stored option only when the authenticated Cognito subject exactly matches its `createdBy`; usernames do not grant permission. A different author or missing stored author returns `403`. Multiple same-name entries owned by the caller return `409` rather than choosing arbitrarily. Updates replace only `data`, preserving the ID, creator, creation time, and votes.
 
