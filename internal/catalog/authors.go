@@ -16,6 +16,9 @@ type UsernameResolver interface {
 // Options resolve their author before insertion and read it from storage thereafter.
 // Presets retain response-time resolution. Display names never grant ownership.
 func (a API) HandleWithAuthors(ctx context.Context, r Request, resolver UsernameResolver) Response {
+	if r.Path == "/v1/featured-mods" {
+		return a.Handle(ctx, r)
+	}
 	if r.Path == "/v1/options" || strings.HasPrefix(r.Path, "/v1/options/") {
 		if resolver != nil {
 			a.Store = optionAuthorStore{Store: a.Store, resolver: resolver}

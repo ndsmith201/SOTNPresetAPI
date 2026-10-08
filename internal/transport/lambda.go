@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -17,11 +18,13 @@ func LambdaHandler(api catalog.API, resolvers ...catalog.UsernameResolver) func(
 	return func(ctx context.Context, event events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 		subject := ""
 		username := ""
+		publisher := false
 		// Trust only the JWT authorizer context supplied by API Gateway. No
 		// caller-provided user ID or unverified Authorization header is used.
 		if auth := event.RequestContext.Authorizer; auth != nil && auth.JWT != nil && auth.JWT.Claims["token_use"] == "access" {
 			subject = auth.JWT.Claims["sub"]
 			username = auth.JWT.Claims["username"]
+			publisher = hasFeaturedModPublisherGroup(auth.JWT.Claims["cognito:groups"])
 		}
 		body := []byte(event.Body)
 		if event.IsBase64Encoded {
@@ -37,7 +40,21 @@ func LambdaHandler(api catalog.API, resolvers ...catalog.UsernameResolver) func(
 				contentType = v
 			}
 		}
-		result := api.HandleWithAuthors(ctx, catalog.Request{Method: event.RequestContext.HTTP.Method, Path: event.RawPath, ContentType: contentType, Subject: subject, Username: username, Query: event.QueryStringParameters, Body: body}, resolver)
+		result := api.HandleWithAuthors(ctx, catalog.Request{Method: event.RequestContext.HTTP.Method, Path: event.RawPath, ContentType: contentType, Subject: subject, Username: username, CanPublishFeaturedMods: publisher, Query: event.QueryStringParameters, Body: body}, resolver)
 		return events.APIGatewayV2HTTPResponse{StatusCode: result.Status, Headers: result.Headers, Body: result.Body}, nil
 	}
+}
+
+func hasFeaturedModPublisherGroup(claim string) bool {
+	var groups []string
+	if json.Unmarshal([]byte(claim), &groups) != nil {
+		// HTTP API authorizer contexts can stringify an array as [group1 group2].
+		groups = strings.FieldsFunc(strings.Trim(claim, "[]"), func(r rune) bool { return r == ',' || r == ' ' })
+	}
+	for _, group := range groups {
+		if group == catalog.FeaturedModPublisherGroup {
+			return true
+		}
+	}
+	return false
 }

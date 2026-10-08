@@ -1,0 +1,73 @@
+meta {
+  name: Publish featured mod
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{base_url}}/v1/featured-mods
+  body: multipartForm
+  auth: none
+}
+
+body:multipart-form {
+  title: A new challenge
+  description: Discover a community-made mod for your next castle run.
+  releaseTime: 2027-01-15T18:00:00Z
+  image: @file({{featured_image_path}})
+  ppf: @file({{featured_ppf_path}})
+}
+
+script:pre-request {
+  if (!bru.getEnvVar("featured_image_path")) {
+    throw new Error("Set featured_image_path to a PNG, JPEG, or WebP file before publishing.");
+  }
+  if (!bru.getEnvVar("featured_ppf_path")) {
+    throw new Error("Set featured_ppf_path to a PPF file before publishing.");
+  }
+  const mode = bru.getEnvVar("auth_mode");
+  if (mode === "local") {
+    req.setHeader("X-Dev-User", bru.getEnvVar("dev_user") || "alice");
+    req.setHeader("X-Dev-Featured-Publisher", "true");
+  } else if (mode === "aws") {
+    const token = bru.getVar("access_token") || bru.getEnvVar("access_token");
+    if (!token) throw new Error("Run Authentication / Get token first, or set the access_token secret.");
+    req.setHeader("Authorization", "Bearer " + token);
+  } else {
+    throw new Error("Select the AWS or Local environment.");
+  }
+}
+
+script:post-response {
+  if (res.getStatus() === 201) bru.setVar("featured_mod_id", res.getBody().id);
+}
+
+tests {
+  test("HTTP 201", function () {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("Published featured-mod metadata", function () {
+    const body = res.getBody();
+    expect(body.id).to.be.a("string").and.not.empty;
+    expect(body.title).to.be.a("string").and.not.empty;
+    expect(body.description).to.be.a("string").and.not.empty;
+    expect(body.image).to.be.a("string").and.not.empty;
+    expect(body.releaseTime).to.be.a("string").and.not.empty;
+    expect(body.downloadAvailable).to.be.a("boolean");
+    expect(body.downloadUrl).to.equal("/v1/featured-mods/" + body.id + "/download");
+    expect(body.createdBy).to.be.a("string").and.not.empty;
+    expect(body.createdAt).to.be.a("string").and.not.empty;
+  });
+}
+
+docs {
+  Explicit publication: every successful send creates an entry and makes it the current banner.
+  Set featured_image_path and featured_ppf_path in the selected environment to local file paths, then edit the text fields in Body before sending.
+  Upload exactly one PNG, JPEG, or WebP, at most 2 MiB and 4096 by 4096 pixels. Upload a .ppf file with a valid PPF1/PPF2/PPF3 version/method header, at most 4 MiB. The complete multipart body, including both files, is limited to 4 MiB plus 64 KiB.
+  Do not set Content-Type manually; Bruno generates the multipart boundary and detects the image part's content type.
+  releaseTime must be RFC3339 with a time zone. It is normalized to UTC and only gates downloadAvailable; the banner is visible immediately.
+  AWS requires an access token containing the featured-mod-publishers group. The group starts empty; an administrator must add the publishing account.
+  Local headers are X-Dev-User and X-Dev-Featured-Publisher: true. Development headers do not authorize production writes.
+  The PPF file is uploaded here but retrieved separately through downloadUrl only after releaseTime. A successful publish saves featured_mod_id for Download PPF.
+  Do not run this request unintentionally as part of a whole-collection run.
+}

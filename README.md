@@ -1,10 +1,10 @@
 # SOTNPresetAPI
 
-A Go API for sharing SOTNPresetGenerator options and exported presets, browsing the community catalog, and voting. AWS SAM provisions API Gateway HTTP API, an ARM64 Lambda function, DynamoDB, and Cognito accounts.
+A Go API for sharing SOTNPresetGenerator options and exported presets, browsing the community catalog, voting, and publishing featured mods. AWS SAM provisions API Gateway HTTP API, an ARM64 Lambda function, DynamoDB, Cognito accounts, and private S3 storage for featured images and PPF files.
 
-Reads are public. Submissions and votes require a Cognito **access token**. Each account has one vote per item; setting the same vote twice does not change the total. Changing or removing a vote updates the totals transactionally.
+Reads are public. Submissions and votes require a Cognito **access token**. Publishing a featured mod additionally requires membership in the `featured-mod-publishers` Cognito group. Each account has one vote per item; setting the same vote twice does not change the total. Changing or removing a vote updates the totals transactionally.
 
-The integration contract is [openai.json](openai.json), a standard OpenAPI 3.0.3 document with all nine operations, request and response schemas, pagination, voting examples, and authentication requirements. Import it into Swagger UI, Postman, or an OpenAPI client generator. It includes a localhost server and an AWS placeholder; replace the latter with the deployed stack's `ApiUrl`. Production writes use bearer authentication; local writes use `X-Dev-User` instead.
+The integration contract is [openai.json](openai.json), a standard OpenAPI 3.0.3 document with all twelve operations, request and response schemas, pagination, voting and featured-mod examples, and authentication requirements. Import it into Swagger UI, Postman, or an OpenAPI client generator. It includes a localhost server and an AWS placeholder; replace the latter with the deployed stack's `ApiUrl`. Production writes use bearer authentication; local writes use `X-Dev-User` instead.
 
 Ready-to-use [Bruno collections](bruno/README.md) cover every API route and Cognito login/token refresh. They include the deployed AWS environment and a local API environment, with passwords supplied through local secret variables.
 
@@ -37,8 +37,11 @@ The script queries only the options partition, follows every page, and looks up 
 | POST | `/v1/presets` | Create a preset or update a same-name preset as a listed author |
 | GET | `/v1/presets/{id}` | Get one preset |
 | PUT | `/v1/presets/{id}/vote` | Set or remove your vote |
+| GET | `/v1/featured-mods` | Get the most recently published featured mod |
+| POST | `/v1/featured-mods` | Publish a featured mod with an uploaded image and PPF (publishers only) |
+| GET | `/v1/featured-mods/{id}/download` | Download a released featured mod’s PPF file |
 
-List endpoints accept `limit` (1–50, default 20) and an opaque `cursor`. Responses contain `items` and, when another page may exist, `nextCursor`. Follow cursors until one is absent to retrieve the whole catalog; an empty page alone does not indicate completion. Ordering is by immutable catalog ID, not score or creation date. Pagination is not a snapshot when submissions occur concurrently.
+Option and preset list endpoints accept `limit` (1–50, default 20) and an opaque `cursor`. Responses contain `items` and, when another page may exist, `nextCursor`. Follow cursors until one is absent to retrieve the whole catalog; an empty page alone does not indicate completion. Ordering is by immutable catalog ID, not score or creation date. Pagination is not a snapshot when submissions occur concurrently.
 
 ```json
 {
@@ -68,7 +71,7 @@ List endpoints accept `limit` (1–50, default 20) and an opaque `cursor`. Respo
 }
 ```
 
-Create and get endpoints return a single item in this format. Creation returns `201` and a `Location` header; updating an option or preset returns `200` with the updated item and existing location. Submit the option or preset directly as the request body, without a `data` wrapper. Do not automatically retry uncertain POSTs; refresh the catalog first.
+Option and preset create and get endpoints return a single item in this format. Creation returns `201` and a `Location` header; updating an option or preset returns `200` with the updated item and existing location. Submit the option or preset directly as the request body, without a `data` wrapper. Do not automatically retry uncertain POSTs; refresh the catalog first.
 
 ### Options
 
@@ -112,6 +115,67 @@ await catalog.presets.vote(sharedPreset.id, 1);
 
 The generator's UI and authentication flow have not been modified in this repository.
 
+### Featured mods
+
+`GET /v1/featured-mods` is public and returns the most recently published featured mod by `createdAt`, as a single flat object. It returns `404 not_found` before any mod is published. The new feature is visible immediately, including when its release time is in the future. `releaseTime` controls only `downloadAvailable`: it is `false` before that instant and `true` at or after it, using the server's clock. A client can show the banner immediately and use this flag to enable its Download button.
+
+```json
+{
+  "id": "0123456789abcdef0123456789abcdef",
+  "title": "A new challenge",
+  "description": "Discover a community-made mod for your next castle run.",
+  "image": "https://example.com/temporary-signed-image-url",
+  "releaseTime": "2027-01-15T18:00:00Z",
+  "downloadAvailable": false,
+  "downloadUrl": "/v1/featured-mods/0123456789abcdef0123456789abcdef/download",
+  "createdBy": "cognito-user-sub",
+  "createdAt": "2026-10-08T01:00:00Z"
+}
+```
+
+`POST /v1/featured-mods` accepts `multipart/form-data` with exactly one of each required field:
+
+| Field | Requirements |
+| --- | --- |
+| `title` | Nonblank text, 1–200 UTF-8 bytes |
+| `description` | Nonblank text, 1–10,000 UTF-8 bytes |
+| `releaseTime` | RFC3339 timestamp with an explicit time zone, such as `2027-01-15T18:00:00Z` or `2027-01-15T11:00:00-07:00`; returned in UTC |
+| `image` | One valid, decoded PNG, JPEG, or WebP file, at most 2 MiB (2,097,152 bytes) and 4,096 × 4,096 pixels |
+| `ppf` | One uploaded `.ppf` file with a recognized PPF1, PPF2, or PPF3 header, at most 4 MiB (4,194,304 bytes) |
+
+PPF checks recognize `PPF10` with method 0 and at least 56 bytes, `PPF20` with method 1 and at least 1,084 bytes, or `PPF30` with method 2 and at least 60 bytes. These are file-header checks; they do not establish whether the patch applies to a particular game image.
+
+The whole multipart body is limited to 4 MiB + 64 KiB (4,259,840 bytes), including both files, text fields, and boundaries. The combined limit can reduce the space available for the PPF when the image is large. Let the HTTP client generate the multipart boundary. JSON bodies, image URL strings, SVGs, and other image formats are not accepted. Unknown or duplicate fields are rejected. A whole-body limit violation returns `413 body_too_large`; invalid fields/files or individual field/file limit violations return `400 invalid_request`. Valid publication returns `201`, `Location: /v1/featured-mods`, and the same flat metadata response format as GET, without PPF bytes. Every successful POST creates a publication; publishing a new one replaces the previous banner selection. Do not automatically retry an uncertain POST; GET first to check what was published.
+
+Production publishing requires a verified Cognito access token whose `cognito:groups` includes `featured-mod-publishers`. The SAM stack creates that group with no members. An administrator must add approved accounts to it before they can publish; ordinary accounts receive `403 forbidden`. After group membership changes, obtain a new access token so it contains the updated groups. Production ignores development headers. For `cmd/local`, send both `X-Dev-User` and `X-Dev-Featured-Publisher: true`.
+
+```sh
+curl http://127.0.0.1:8080/v1/featured-mods
+curl -X POST http://127.0.0.1:8080/v1/featured-mods \
+  -H 'X-Dev-User: alice' -H 'X-Dev-Featured-Publisher: true' \
+  --form-string 'title=A new challenge' \
+  --form-string 'description=Discover a community-made mod for your next castle run.' \
+  --form-string 'releaseTime=2027-01-15T18:00:00Z' \
+  -F 'image=@/path/to/headshot.png;type=image/png' \
+  -F 'ppf=@/path/to/mod.ppf;type=application/octet-stream'
+```
+
+Images and PPF files are stored in a private S3 bucket in AWS. Each metadata response contains a presigned image URL valid for 15 minutes; fetch the metadata again when a URL expires rather than persisting it as a permanent asset address. Local development stores both file types in `.local/featured-mod-images` by default; set `LOCAL_FEATURED_MOD_IMAGES_DIR` to use another directory. The local server returns absolute image URLs such as `http://127.0.0.1:8080/featured-mod-images/{id}.png` (`.jpg` and `.webp` are also supported). Metadata responses use `Cache-Control: no-store`. Only the exact `/v1/featured-mods` path supports GET and POST; other methods return `405` with `Allow: GET, POST`.
+
+The PPF download is separate from metadata. Resolve the relative `downloadUrl` against the API base URL and request it with GET. `GET /v1/featured-mods/{id}/download` is public but checks release time on every request. At or after release it returns `307` with `Location` set to a private S3 download URL valid for 15 minutes; follow the redirect to download the PPF with the attachment filename `{id}.ppf`. In local mode the redirect points to `http://127.0.0.1:8080/featured-mod-files/{id}.ppf`, whose handler also checks the release time so direct URLs cannot bypass it. Before release, the download endpoint returns:
+
+```json
+{"error":{"code":"not_released","message":"this mod is not available for download yet"}}
+```
+
+The status is `403`; an unknown or malformed featured-mod ID returns `404`. Other methods on the download route return `405` with `Allow: GET`. Unrecognized featured-mod routes return `404`. The metadata always includes `downloadUrl`, even before release, while `downloadAvailable` tells the UI whether to enable Download. Refresh metadata or evaluate the UTC `releaseTime` when that instant arrives; the server remains the authority for release enforcement.
+
+To download a released publication, use its ID from metadata:
+
+```sh
+curl -L --output mod.ppf http://127.0.0.1:8080/v1/featured-mods/REPLACE_WITH_FEATURED_MOD_ID/download
+```
+
 ### Voting
 
 Send `PUT /v1/{options|presets}/{id}/vote` with:
@@ -135,7 +199,7 @@ go run ./cmd/local
 
 The local runner creates its table automatically and listens on `http://127.0.0.1:8080`. Docker stores the database in a named volume, so it survives ordinary container restarts. `DYNAMODB_ENDPOINT` optionally selects another local HTTP endpoint. This runner only accepts a loopback database endpoint and uses dummy credentials.
 
-For local writes only, send `X-Dev-User` to choose a test identity. The deployed Lambda has no development-authentication mode.
+For local writes only, send `X-Dev-User` to choose a test identity. Featured-mod publication also requires `X-Dev-Featured-Publisher: true`. The deployed Lambda has no development-authentication mode.
 
 ```sh
 curl http://127.0.0.1:8080/v1/presets
@@ -168,9 +232,9 @@ sam build
 sam deploy --guided
 ```
 
-Choose a stack name such as `sotn-preset-api`, a region such as `us-west-2`, and allow SAM to create the function's IAM role. Public read routes intentionally have no authorizer. SAM builds `cmd/api` as the Linux ARM64 `bootstrap` executable with the `provided.al2023` runtime. Stack outputs provide `ApiUrl`, `UserPoolId`, `UserPoolClientId`, `Region`, and `TableName`.
+Choose a stack name such as `sotn-preset-api`, a region such as `us-west-2`, and allow SAM to create the function's IAM role. Public read routes intentionally have no authorizer. SAM builds `cmd/api` as the Linux ARM64 `bootstrap` executable with the `provided.al2023` runtime. Stack outputs provide `ApiUrl`, `UserPoolId`, `UserPoolClientId`, `Region`, `TableName`, and `FeaturedModBucketName`.
 
-For a subsequent release, use `sam build` and `sam deploy`. DynamoDB and the user pool are retained when the stack is deleted or replaced; retained resources must be managed separately. The table uses on-demand billing, encryption, and point-in-time recovery. API Gateway applies a per-route rate of 20 requests/second and burst of 40. This is a small community catalog design: all options share one partition key and all presets another; high traffic may require a different partition/index layout.
+For a subsequent release, use `sam build` and `sam deploy`. DynamoDB, the user pool, and the featured-mod S3 bucket are retained when the stack is deleted or replaced; retained resources must be managed separately. The table uses on-demand billing, encryption, and point-in-time recovery. API Gateway applies a per-route rate of 20 requests/second and burst of 40. This is a small community catalog design: all options share one partition key and all presets another; high traffic may require a different partition/index layout.
 
 ### Accounts and access tokens
 
@@ -178,7 +242,7 @@ The stack creates a username-and-password Cognito user pool and a public app cli
 
 Cognito doesn't support a literally permanent session. A user must sign in again when the 10-year refresh token expires, when the token is revoked, after an administrator signs the user out globally, or when the account is disabled or deleted. The desktop client must persist the refresh token and renew the access token before or after its one-hour expiration for the long-lived login to work.
 
-API Gateway verifies the issuer, client audience, expiry, and `aws.cognito.signin.user.admin` scope. Lambda additionally requires `token_use=access` and a nonempty `sub` claim. ID tokens and caller-provided identity headers are not accepted. The Cognito methods above issue the required access-token scope. Because accounts have no email address or phone number, Cognito self-service password recovery is disabled; an administrator must reset a forgotten password with `AdminSetUserPassword` or an equivalent administrative workflow.
+API Gateway verifies the issuer, client audience, expiry, and `aws.cognito.signin.user.admin` scope. Featured-mod publication additionally checks the verified `cognito:groups` claim for `featured-mod-publishers`. Lambda additionally requires `token_use=access` and a nonempty `sub` claim. ID tokens and caller-provided identity headers are not accepted. The Cognito methods above issue the required access-token scope. Because accounts have no email address or phone number, Cognito self-service password recovery is disabled; an administrator must reset a forgotten password with `AdminSetUserPassword` or an equivalent administrative workflow.
 
 Changing from email sign-in to username sign-in requires a new Cognito user pool because AWS doesn't allow `UsernameAttributes` to be changed in place. The template uses the new logical resource ID `UsernameUsers` instead of `Users` so CloudFormation creates a new pool and replaces the app client. The old pool's `DeletionPolicy: Retain` preserves it and its users outside the stack, but those users aren't migrated automatically. After deployment, use the new `UserPoolId` and `UserPoolClientId` stack outputs and create new username-based accounts.
 

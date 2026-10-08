@@ -3,7 +3,7 @@
   "info": {
     "title": "SOTN Preset API",
     "version": "1.0.0",
-    "description": "Community options, exported presets, and per-account voting for SOTNPresetGenerator. Reads are public. In AWS, writes require a Cognito access token with token_use=access, a nonempty sub, the configured client audience and issuer, and scope aws.cognito.signin.user.admin. Obtain and refresh tokens through Cognito; this API does not implement login endpoints. For cmd/local only, omit bearer authentication and send X-Dev-User; the production Lambda ignores that header. The security requirements in this document describe production. Import this file into OpenAPI-compatible integration tools. Replace the AWS server placeholder with the deployed stack's ApiUrl. The file name openai.json is intentional; its contents are a standard OpenAPI document."
+    "description": "Community options, exported presets, per-account voting, and featured mods for SOTNPresetGenerator. Reads are public. In AWS, writes require a Cognito access token with token_use=access, a nonempty sub, the configured client audience and issuer, and scope aws.cognito.signin.user.admin. Obtain and refresh tokens through Cognito; this API does not implement login endpoints. Featured-mod publication additionally requires the verified cognito:groups claim to include featured-mod-publishers. For cmd/local only, omit bearer authentication and send X-Dev-User (plus X-Dev-Featured-Publisher: true to publish featured mods); the production Lambda ignores that header. The security requirements in this document describe production. Import this file into OpenAPI-compatible integration tools. Replace the AWS server placeholder with the deployed stack's ApiUrl. The file name openai.json is intentional; its contents are a standard OpenAPI document."
   },
   "servers": [
     {
@@ -37,6 +37,10 @@
     {
       "name": "Presets",
       "description": "Full exported randomizer presets."
+    },
+    {
+      "name": "Featured mods",
+      "description": "Public banner metadata and publisher-only image uploads."
     }
   ],
   "security": [],
@@ -862,6 +866,242 @@
           }
         }
       }
+    },
+    "/v1/featured-mods": {
+      "get": {
+        "operationId": "getFeaturedMod",
+        "tags": [
+          "Featured mods"
+        ],
+        "summary": "Get the current featured mod",
+        "description": "Public single-object read of the most recently published mod, ordered by createdAt. Future-release mods are visible immediately. downloadAvailable is true when releaseTime is at or before the server clock and false beforehand. Returns 404 when no mod has been published. In AWS, image is a private-S3 presigned URL valid for 15 minutes; refresh metadata after it expires. Local image URLs are served by cmd/local. No pagination or PPF bytes are included. downloadUrl is a relative API route that enforces releaseTime and redirects to the PPF file; resolve it against the API base URL. Only the exact collection path is supported.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The featured mod selected by publication time, visible even before its release time.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Metadata is not cacheable; image URLs expire and downloadAvailable depends on server time.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "no-store"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedMod"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef",
+                  "title": "A new challenge",
+                  "description": "Discover a community-made mod for your next castle run.",
+                  "image": "https://example.com/temporary-signed-image-url",
+                  "releaseTime": "2027-01-15T18:00:00Z",
+                  "downloadAvailable": false,
+                  "createdBy": "example-cognito-subject",
+                  "createdAt": "2026-10-08T01:00:00Z",
+                  "downloadUrl": "/v1/featured-mods/0123456789abcdef0123456789abcdef/download"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      },
+      "post": {
+        "operationId": "publishFeaturedMod",
+        "tags": [
+          "Featured mods"
+        ],
+        "summary": "Publish a featured mod with image and PPF uploads",
+        "description": "Publishers only: a verified Cognito access token must include featured-mod-publishers in cognito:groups. SAM creates the group empty; an administrator adds authorized accounts. Local mode requires X-Dev-User and X-Dev-Featured-Publisher: true instead. Send exactly one of each required multipart field; unknown or duplicate fields are rejected. Every successful POST publishes a new entry, immediately replacing the current banner selection. releaseTime gates downloadAvailable, not visibility. Image content is decoded and must be a valid PNG, JPEG, or WebP at most 2 MiB with dimensions at most 4096 by 4096 pixels. Do not automatically retry uncertain POSTs; read current metadata first. Upload one PPF file with a .ppf filename and PPF1, PPF2, or PPF3 header, at most 4 MiB. The combined multipart limit is 4 MiB plus 64 KiB, including the image. Metadata includes a relative downloadUrl; PPF bytes are retrieved separately and cannot be downloaded before releaseTime.",
+        "security": [
+          {
+            "CognitoAccessToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DevUser"
+          },
+          {
+            "$ref": "#/components/parameters/DevFeaturedPublisher"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Multipart body at most 4259840 bytes (4 MiB plus 64 KiB), including image, PPF, text fields, and boundaries. Image maximum is 2 MiB; PPF maximum is 4 MiB, subject to the combined limit. Let the client generate Content-Type with its multipart boundary.",
+          "x-maxBytes": 4259840,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/FeaturedModPublication"
+              },
+              "encoding": {
+                "image": {
+                  "contentType": "image/png, image/jpeg, image/webp"
+                },
+                "ppf": {
+                  "contentType": "application/octet-stream"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Published a featured mod. It becomes the current banner immediately; releaseTime only gates downloadAvailable.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Metadata is not cacheable; image URLs expire and downloadAvailable depends on server time.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "no-store"
+              },
+              "Location": {
+                "description": "Relative path for reading the current featured mod.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "/v1/featured-mods"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedMod"
+                },
+                "example": {
+                  "id": "0123456789abcdef0123456789abcdef",
+                  "title": "A new challenge",
+                  "description": "Discover a community-made mod for your next castle run.",
+                  "image": "https://example.com/temporary-signed-image-url",
+                  "releaseTime": "2027-01-15T18:00:00Z",
+                  "downloadAvailable": false,
+                  "createdBy": "example-cognito-subject",
+                  "createdAt": "2026-10-08T01:00:00Z",
+                  "downloadUrl": "/v1/featured-mods/0123456789abcdef0123456789abcdef/download"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/BodyTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedMediaType"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      }
+    },
+    "/v1/featured-mods/{id}/download": {
+      "get": {
+        "operationId": "downloadFeaturedMod",
+        "tags": [
+          "Featured mods"
+        ],
+        "summary": "Download a released featured mod PPF",
+        "description": "Public, separate file retrieval. Returns 307 with a temporary PPF URL only at or after releaseTime, including for an older publication identified by ID. Before release returns 403 not_released; a malformed or missing ID returns 404. The redirected file uses attachment filename {id}.ppf. Local direct-file URLs also enforce releaseTime. Only GET is supported on this exact route.",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CatalogID"
+          }
+        ],
+        "responses": {
+          "307": {
+            "description": "Released PPF: follow Location to download it. PPF bytes are served separately from metadata.",
+            "headers": {
+              "Location": {
+                "description": "Private S3 URL valid for 15 minutes in AWS; absolute /featured-mod-files/{id}.ppf URL in cmd/local. The download is an attachment named {id}.ppf.",
+                "schema": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              },
+              "Cache-Control": {
+                "description": "Release eligibility and signed URLs must not be cached.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "no-store"
+              }
+            }
+          },
+          "403": {
+            "description": "The featured mod exists, but the release time has not arrived.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "code": "not_released",
+                    "message": "this mod is not available for download yet"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "405": {
+            "$ref": "#/components/responses/MethodNotAllowed"
+          },
+          "429": {
+            "$ref": "#/components/responses/Throttled"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "$ref": "#/components/responses/GatewayFailure"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -914,6 +1154,19 @@
         },
         "description": "LOCAL DEVELOPMENT ONLY: required for writes to cmd/local when using the localhost server. Selects a test identity. Never authenticates AWS requests and is ignored by production.",
         "example": "alice"
+      },
+      "DevFeaturedPublisher": {
+        "name": "X-Dev-Featured-Publisher",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "true"
+          ]
+        },
+        "description": "LOCAL DEVELOPMENT ONLY: required with X-Dev-User to publish featured mods through cmd/local. Ignored by production; production verifies publisher group membership in the access token.",
+        "example": "true"
       }
     },
     "schemas": {
@@ -1332,7 +1585,8 @@
                   "body_too_large",
                   "unsupported_media_type",
                   "internal_error",
-                  "forbidden"
+                  "forbidden",
+                  "not_released"
                 ]
               },
               "message": {
@@ -1435,11 +1689,133 @@
             "description": "Opaque cursor for this collection. Omitted at the end; continue even if a page has no items."
           }
         }
+      },
+      "FeaturedModPublication": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "description",
+          "image",
+          "releaseTime",
+          "ppf"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "\\S",
+            "x-maxBytes": 200,
+            "description": "Nonblank title, at most 200 UTF-8 bytes.",
+            "example": "A new challenge"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000,
+            "pattern": "\\S",
+            "x-maxBytes": 10000,
+            "description": "Nonblank description, at most 10000 UTF-8 bytes.",
+            "example": "Discover a community-made mod for your next castle run."
+          },
+          "image": {
+            "type": "string",
+            "format": "binary",
+            "x-maxBytes": 2097152,
+            "description": "Exactly one uploaded PNG, JPEG, or WebP file; valid decoded content required. At most 2097152 bytes and 4096 by 4096 pixels. Image URLs and SVG are not accepted."
+          },
+          "releaseTime": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$",
+            "description": "Required RFC3339 timestamp with an explicit time zone. Normalized to UTC in responses. Controls downloadAvailable, not banner visibility.",
+            "example": "2027-01-15T18:00:00Z"
+          },
+          "ppf": {
+            "type": "string",
+            "format": "binary",
+            "x-maxBytes": 4194304,
+            "description": "Exactly one .ppf file, at most 4 MiB subject to the 4 MiB plus 64 KiB combined multipart limit. Recognized header: PPF10/method 0/minimum 56 bytes, PPF20/method 1/minimum 1084 bytes, or PPF30/method 2/minimum 60 bytes. Header checks do not validate applicability to a game image."
+          }
+        }
+      },
+      "FeaturedMod": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "description",
+          "image",
+          "releaseTime",
+          "downloadAvailable",
+          "createdBy",
+          "createdAt",
+          "downloadUrl"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/CatalogID"
+          },
+          "title": {
+            "type": "string",
+            "description": "Published title."
+          },
+          "description": {
+            "type": "string",
+            "description": "Published description."
+          },
+          "image": {
+            "type": "string",
+            "format": "uri",
+            "readOnly": true,
+            "description": "Image URL. In AWS, presigned from private S3 and valid for 15 minutes. Local mode returns an absolute URL served by cmd/local. Refresh metadata after expiry."
+          },
+          "releaseTime": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Release timestamp normalized to UTC."
+          },
+          "downloadAvailable": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "True when releaseTime is at or before the server clock; false beforehand. The banner remains visible in both cases. Controls whether the UI enables Download; the download route enforces release time independently."
+          },
+          "createdBy": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Verified publisher Cognito subject; local mode uses X-Dev-User."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "description": "Publication time used to select the current featured mod."
+          },
+          "downloadUrl": {
+            "type": "string",
+            "readOnly": true,
+            "description": "Relative API path /v1/featured-mods/{id}/download. Resolve against the API base URL. The route returns a file redirect only at or after releaseTime; otherwise 403 not_released. PPF bytes are not embedded in metadata.",
+            "example": "/v1/featured-mods/0123456789abcdef0123456789abcdef/download"
+          }
+        },
+        "example": {
+          "id": "0123456789abcdef0123456789abcdef",
+          "title": "A new challenge",
+          "description": "Discover a community-made mod for your next castle run.",
+          "image": "https://example.com/temporary-signed-image-url",
+          "releaseTime": "2027-01-15T18:00:00Z",
+          "downloadAvailable": false,
+          "createdBy": "example-cognito-subject",
+          "createdAt": "2026-10-08T01:00:00Z",
+          "downloadUrl": "/v1/featured-mods/0123456789abcdef0123456789abcdef/download"
+        }
       }
     },
     "responses": {
       "InvalidRequest": {
-        "description": "Malformed JSON, unsupported fields, invalid option/preset/vote, invalid pagination, or normalized submission exceeding 256 KiB for presets or 128 KiB for options.",
+        "description": "Malformed JSON, unsupported fields, invalid option/preset/vote, invalid pagination, or normalized submission exceeding 256 KiB for presets or 128 KiB for options. Featured-mod requests must have valid, unique multipart fields, a zoned RFC3339 releaseTime, valid PNG/JPEG/WebP content within the byte and dimension limits, and a .ppf file with a recognized PPF1/2/3 header within its byte limit. Per-field or per-file limit failures return 400 when the total body is within its limit.",
         "content": {
           "application/json": {
             "schema": {
@@ -1472,17 +1848,24 @@
         }
       },
       "Forbidden": {
-        "description": "Authorization was rejected by API Gateway, a same-name option belongs to a different authenticated subject, or a same-name preset does not list the verified username in its stored author array.",
+        "description": "Authorization was rejected by API Gateway, a same-name option belongs to a different authenticated subject, or a same-name preset does not list the verified username in its stored author array. Featured-mod publication requires verified membership in featured-mod-publishers (or the local publisher header).",
         "content": {
           "application/json": {
             "schema": {
-              "$ref": "#/components/schemas/GatewayError"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "$ref": "#/components/schemas/GatewayError"
+                }
+              ]
             }
           }
         }
       },
       "NotFound": {
-        "description": "Unknown catalog ID or route.",
+        "description": "Unknown catalog ID or route, or no published featured mod exists.",
         "content": {
           "application/json": {
             "schema": {
@@ -1532,7 +1915,7 @@
         }
       },
       "BodyTooLarge": {
-        "description": "Request body exceeds 256 KiB for presets or 128 KiB for options. The local development server may return plain text.",
+        "description": "Complete request body exceeds 256 KiB for presets, 128 KiB for options, or 4 MiB + 64 KiB for featured-mod multipart uploads. Per-field and per-file limit failures in a featured-mod body that is within the total limit return 400 invalid_request instead. The local development server may return plain text.",
         "content": {
           "application/json": {
             "schema": {
@@ -1547,7 +1930,7 @@
         }
       },
       "UnsupportedMediaType": {
-        "description": "Writes require Content-Type: application/json; charset parameters are accepted.",
+        "description": "Option, preset, and vote writes require Content-Type: application/json; charset parameters are accepted. Featured-mod publication requires Content-Type: multipart/form-data. Missing or malformed multipart fields and invalid image/PPF files return 400 invalid_request instead.",
         "content": {
           "application/json": {
             "schema": {
