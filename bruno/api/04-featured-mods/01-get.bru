@@ -1,0 +1,47 @@
+meta {
+  name: Get current featured mod
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/v1/featured-mods
+  body: none
+  auth: none
+}
+
+script:post-response {
+  if (res.getStatus() === 200) bru.setVar("featured_mod_id", res.getBody().id);
+}
+
+tests {
+  test("HTTP 200 or 404 before the first publication", function () {
+    expect([200, 404]).to.include(res.getStatus());
+  });
+  if (res.getStatus() === 200) {
+    test("Flat featured-mod metadata", function () {
+      const body = res.getBody();
+      expect(body.id).to.be.a("string").and.not.empty;
+      expect(body.title).to.be.a("string").and.not.empty;
+      expect(body.description).to.be.a("string").and.not.empty;
+      expect(body.image).to.be.a("string").and.not.empty;
+      expect(body.releaseTime).to.be.a("string").and.not.empty;
+      expect(body.downloadAvailable).to.be.a("boolean");
+      expect(body.downloadUrl).to.equal("/v1/featured-mods/" + body.id + "/download");
+      expect(body.createdBy).to.be.a("string").and.not.empty;
+      expect(body.createdAt).to.be.a("string").and.not.empty;
+    });
+  } else {
+    test("No featured mod is published", function () {
+      expect(res.getBody().error.code).to.equal("not_found");
+    });
+  }
+}
+
+docs {
+  Public read of the most recently published mod, ordered by createdAt. Returns one flat object, not a page.
+  Before the first publication, 404 not_found is expected. Future releases remain visible; releaseTime controls only downloadAvailable.
+  AWS image URLs expire after 15 minutes. Fetch fresh metadata when the image URL expires.
+  downloadUrl is the relative API route for the separate PPF download; resolve it against base_url. The metadata does not contain PPF bytes.
+  A successful read saves featured_mod_id for Download PPF. The download route enforces releaseTime independently.
+}

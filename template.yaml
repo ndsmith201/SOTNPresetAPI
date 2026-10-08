@@ -1,8 +1,26 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: SOTN community presets, options, and per-account voting
+Description: SOTN community presets, options, featured mods, and per-account voting
 
 Resources:
+  FeaturedModBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
   CatalogTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
@@ -46,6 +64,13 @@ Resources:
             Priority: 1
       LambdaConfig:
         PreSignUp: !GetAtt AutoConfirmSignUp.Arn
+
+  FeaturedModPublishers:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: featured-mod-publishers
+      Description: Accounts permitted to publish the community featured mod
+      UserPoolId: !Ref UsernameUsers
 
   AutoConfirmSignUpRole:
     Type: AWS::IAM::Role
@@ -138,6 +163,7 @@ Resources:
         Variables:
           TABLE_NAME: !Ref CatalogTable
           USER_POOL_ID: !Ref UsernameUsers
+          FEATURED_MOD_BUCKET: !Ref FeaturedModBucket
       Policies:
         - Statement:
             - Effect: Allow
@@ -151,12 +177,35 @@ Resources:
             - Effect: Allow
               Action: cognito-idp:ListUsers
               Resource: !GetAtt UsernameUsers.Arn
+            - Effect: Allow
+              Action: [s3:PutObject, s3:GetObject, s3:DeleteObject]
+              Resource: !Sub ${FeaturedModBucket.Arn}/*
       Events:
         Health:
           Type: HttpApi
           Properties:
             ApiId: !Ref HttpApi
             Path: /healthz
+            Method: GET
+            Auth: {Authorizer: NONE}
+        GetFeaturedMod:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/featured-mods
+            Method: GET
+            Auth: {Authorizer: NONE}
+        PublishFeaturedMod:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/featured-mods
+            Method: POST
+        DownloadFeaturedMod:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /v1/featured-mods/{id}/download
             Method: GET
             Auth: {Authorizer: NONE}
         ListOptions:
@@ -219,6 +268,8 @@ Resources:
       RetentionInDays: 14
 
 Outputs:
+  FeaturedModBucketName:
+    Value: !Ref FeaturedModBucket
   ApiUrl:
     Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
   UserPoolId:

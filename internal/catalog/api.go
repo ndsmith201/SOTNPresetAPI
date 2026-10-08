@@ -10,12 +10,14 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Request struct {
 	Method, Path, ContentType, Subject, Username string
 	Query                                        map[string]string
 	Body                                         []byte
+	CanPublishFeaturedMods                       bool
 }
 
 type Response struct {
@@ -52,6 +54,12 @@ func failure(status int, code, message string) Response {
 }
 
 func (a API) Handle(ctx context.Context, r Request) Response {
+	if r.Path == "/v1/featured-mods" {
+		return a.handleFeaturedMods(ctx, r, time.Now().UTC())
+	}
+	if strings.HasPrefix(r.Path, "/v1/featured-mods/") {
+		return a.handleFeaturedModDownload(ctx, r, time.Now().UTC())
+	}
 	if r.Path == "/healthz" && r.Method == http.MethodGet {
 		return reply(200, map[string]string{"status": "ok"})
 	}

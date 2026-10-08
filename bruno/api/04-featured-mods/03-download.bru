@@ -1,0 +1,41 @@
+meta {
+  name: Download PPF
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{base_url}}/v1/featured-mods/{{featured_mod_id}}/download
+  body: none
+  auth: none
+}
+
+settings {
+  followRedirects: false
+}
+
+script:pre-request {
+  const id = bru.getVar("featured_mod_id") || bru.getEnvVar("featured_mod_id");
+  if (!id) throw new Error("Get or publish a featured mod first, or set featured_mod_id in the environment.");
+}
+
+tests {
+  test("Released redirect or unreleased refusal", function () {
+    expect([307, 403]).to.include(res.getStatus());
+  });
+  if (res.getStatus() === 403) {
+    test("Release time is enforced", function () {
+      expect(res.getBody().error.code).to.equal("not_released");
+      expect(res.getBody().error.message).to.equal("this mod is not available for download yet");
+    });
+  }
+}
+
+docs {
+  Public PPF file retrieval for featured_mod_id, saved by Get current featured mod or Publish featured mod.
+  Before releaseTime, expect 403 not_released. At or after release, expect 307 with a Location header pointing to the PPF.
+  Follow redirects is disabled so the API's release check and redirect are visible. Enable it in Settings to retrieve the file bytes.
+  AWS Location URLs expire after 15 minutes and download as attachment filename {id}.ppf; request this route again for a fresh URL.
+  Local redirects point to /featured-mod-files/{id}.ppf. That file handler also enforces releaseTime.
+  Metadata and file retrieval remain separate. An unknown or malformed featured_mod_id returns 404.
+}

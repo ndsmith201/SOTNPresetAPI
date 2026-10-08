@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -40,12 +41,29 @@ func main() {
 	if err != nil && !errors.As(err, &exists) {
 		log.Fatal(err)
 	}
-	api := catalog.API{Store: storage.Dynamo{Client: client, Table: table}}
+	imageDirectory := os.Getenv("LOCAL_FEATURED_MOD_IMAGES_DIR")
+	if imageDirectory == "" {
+		imageDirectory = ".local/featured-mod-images"
+	}
+	assets := storage.LocalAssets{Directory: imageDirectory, BaseURL: "http://127.0.0.1:8080"}
+	api := catalog.API{Store: storage.FeaturedMods{Dynamo: storage.Dynamo{Client: client, Table: table}, Assets: assets}}
 	server := &http.Server{Addr: "127.0.0.1:8080", ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, catalog.MaxPresetBodyBytes))
+			if strings.HasPrefix(r.URL.Path, "/featured-mod-images/") {
+				assets.ServeImages(w, r)
+				return
+			}
+			if strings.HasPrefix(r.URL.Path, "/featured-mod-files/") {
+				assets.ServePatch(api, w, r)
+				return
+			}
+			limit := int64(catalog.MaxPresetBodyBytes)
+			if r.URL.Path == "/v1/featured-mods" {
+				limit = catalog.MaxFeaturedModBodyBytes
+			}
+			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 			if err != nil {
-				http.Error(w, "body exceeds 256 KiB", 413)
+				http.Error(w, "request body exceeds its size limit", 413)
 				return
 			}
 			query := map[string]string{}
@@ -54,7 +72,7 @@ func main() {
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
-			res := api.Handle(ctx, catalog.Request{Method: r.Method, Path: r.URL.Path, ContentType: r.Header.Get("Content-Type"), Subject: r.Header.Get("X-Dev-User"), Username: r.Header.Get("X-Dev-User"), Query: query, Body: body})
+			res := api.Handle(ctx, catalog.Request{Method: r.Method, Path: r.URL.Path, ContentType: r.Header.Get("Content-Type"), Subject: r.Header.Get("X-Dev-User"), Username: r.Header.Get("X-Dev-User"), CanPublishFeaturedMods: r.Header.Get("X-Dev-Featured-Publisher") == "true", Query: query, Body: body})
 			for k, v := range res.Headers {
 				w.Header().Set(k, v)
 			}

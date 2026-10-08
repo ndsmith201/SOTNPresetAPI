@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cognitoidentityprovider"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"sotnpresetapi/internal/authors"
 	"sotnpresetapi/internal/catalog"
 	"sotnpresetapi/internal/storage"
@@ -27,7 +28,15 @@ func main() {
 		slog.Error("load AWS config", "error", err)
 		os.Exit(1)
 	}
-	api := catalog.API{Store: storage.Dynamo{Client: dynamodb.NewFromConfig(cfg), Table: table}}
+	bucket := os.Getenv("FEATURED_MOD_BUCKET")
+	if bucket == "" {
+		slog.Error("FEATURED_MOD_BUCKET is required")
+		os.Exit(1)
+	}
+	api := catalog.API{Store: storage.FeaturedMods{
+		Dynamo: storage.Dynamo{Client: dynamodb.NewFromConfig(cfg), Table: table},
+		Assets: storage.S3Assets{Client: s3.NewFromConfig(cfg), Bucket: bucket},
+	}}
 	pool := os.Getenv("USER_POOL_ID")
 	if pool == "" {
 		slog.Error("USER_POOL_ID is required")
